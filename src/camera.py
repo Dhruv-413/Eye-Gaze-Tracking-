@@ -1,141 +1,185 @@
-print("Starting script...")  # Debug log to confirm script starts
+print("Starting script...")
 
 import cv2
-print("cv2 imported successfully.")  # Debug log to confirm import
+print("cv2 imported successfully")
+
+try:
+    from core.face_tracker import FaceMeshDetector
+    print("FaceMeshDetector imported successfully")
+except Exception as e:
+    print(f"Error importing FaceMeshDetector: {e}")
 
 try:
     from Interaction.eye_blink import EyeBlinkDetector
-    print("EyeBlinkDetector imported successfully.")
+    print("EyeBlinkDetector imported successfully")
 except Exception as e:
     print(f"Error importing EyeBlinkDetector: {e}")
 
 try:
+    from Interaction.eye_pupil_extract import EyeRegionExtractor
+    print("EyeRegionExtractor imported successfully")
+except Exception as e:
+    print(f"Error importing EyeRegionExtractor: {e}")
+
+try:
     from Interaction.face_detection import FaceDetection
-    print("FaceDetection imported successfully.")
+    print("FaceDetection imported successfully")
 except Exception as e:
     print(f"Error importing FaceDetection: {e}")
 
 try:
-    from Interaction.feedback import Feedback
-    print("Feedback imported successfully.")
+    from Interaction.feedback import FeedbackSystem
+    print("FeedbackSystem imported successfully")
 except Exception as e:
-    print(f"Error importing Feedback: {e}")
+    print(f"Error importing FeedbackSystem: {e}")
 
 try:
     from Interaction.gaze_tracking import GazeTracker
-    print("GazeTracker imported successfully.")
+    print("GazeTracker imported successfully")
 except Exception as e:
     print(f"Error importing GazeTracker: {e}")
 
 try:
     from Interaction.head_pose import HeadPoseEstimator
-    print("HeadPoseEstimator imported successfully.")
+    print("HeadPoseEstimator imported successfully")
 except Exception as e:
     print(f"Error importing HeadPoseEstimator: {e}")
 
 try:
     from Interaction.pupil_detection import PupilDetector
-    print("PupilDetector imported successfully.")
+    print("PupilDetector imported successfully")
 except Exception as e:
     print(f"Error importing PupilDetector: {e}")
 
-def main():
-    print("Entering main function...")  # Debug log to confirm main function starts
+try:
+    from Interaction.constants import DEFAULT
+    print("DEFAULT imported successfully")
+except Exception as e:
+    print(f"Error importing DEFAULT: {e}")
 
+try:
+    from Interaction.gaze_tracking import GazeConfig
+    print("GazeConfig imported successfully")
+except Exception as e:
+    print(f"Error importing GazeConfig: {e}")
+
+def main():
+    print("Entering main function")
+    
+    # Initialize core detector first
+    try:
+        print("Initializing FaceMeshDetector...")
+        face_mesh_detector = FaceMeshDetector()
+        print("FaceMeshDetector initialized successfully")
+    except Exception as e:
+        print(f"Failed to initialize FaceMeshDetector: {e}")
+        return
+
+    # Initialize video capture
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
-        print("Error: Could not open camera.")
+        print("Error: Could not open camera")
         return
+    print("Camera opened successfully")
 
-    print("Camera opened successfully.")
-
-    # Explicitly create a named window
-    cv2.namedWindow("Integrated Interaction System", cv2.WINDOW_NORMAL)
-
-    # Instantiate each module.
+    # Set up modules with dependencies
     try:
         print("Initializing modules...")
-        blink_detector = EyeBlinkDetector()
-        print("EyeBlinkDetector initialized.")
-        face_detector = FaceDetection()
-        print("FaceDetection initialized.")
-        feedback_detector = Feedback()
-        print("Feedback initialized.")
-        gaze_tracker = GazeTracker()
-        print("GazeTracker initialized.")
-        head_pose_estimator = HeadPoseEstimator()
-        print("HeadPoseEstimator initialized.")
-        pupil_detector = PupilDetector()
-        print("PupilDetector initialized.")
-        print("All modules initialized successfully.")
+        
+        # Pass DEFAULT config explicitly where required
+        eye_extractor = EyeRegionExtractor(face_mesh_detector, config=DEFAULT)
+        blink_detector = EyeBlinkDetector(face_mesh_detector)
+        face_detection = FaceDetection(face_mesh_detector)
+        feedback_system = FeedbackSystem(face_mesh_detector, blink_detector)
+        head_pose_estimator = HeadPoseEstimator(face_mesh_detector)
+        pupil_detector = PupilDetector(face_mesh_detector, eye_extractor, landmarks_config=DEFAULT)
+        gaze_tracker = GazeTracker(face_mesh_detector, eye_extractor, blink_detector, config=GazeConfig())  # Pass GazeConfig here
+        
+        print("All modules initialized successfully")
     except Exception as e:
-        print(f"Error initializing modules: {e}")
+        print(f"Module initialization failed: {e}")
+        cap.release()
         return
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Failed to grab frame")
-            break
+    # Create window with normalized size
+    cv2.namedWindow("Integrated System", cv2.WINDOW_NORMAL)
+    
+    try:
+        while True:
+            # Read frame
+            ret, frame = cap.read()
+            if not ret:
+                print("Failed to capture frame")
+                break
+            
+            # Resize early for consistent processing
+            frame = cv2.resize(frame, (1280, 720))
+            print("Frame resized to 1280x720")
 
-        print("Frame captured successfully.")  # Debug log to confirm frame capture
-
-        try:
-            # Process frame with each module and add debug logs
-            print("Processing frame with FaceDetection...")
-            frame = face_detector.process_frame(frame)
-            print("FaceDetection completed.")
-
-            print("Processing frame with EyeBlinkDetector...")
-            frame = blink_detector.process_frame(frame)
-            print("EyeBlinkDetector completed.")
-
-            print("Getting feedback...")
-            feedback_text = feedback_detector.get_feedback()  # Call the actual method
-            print(f"Feedback: {feedback_text}")
-
-            print("Getting head pose...")
-            head_pose_text = head_pose_estimator.get_head_pose()  # Assuming this method exists
-            print(f"Head Pose: {head_pose_text}")
-
-            print("Processing frame with GazeTracker...")
+            # Process frame through pipeline
             try:
-                frame = gaze_tracker.process_frame(frame)
-                print("GazeTracker completed.")
+                # Face detection
+                face_result = face_mesh_detector.process_frame(frame)
+                if face_result is None:
+                    print("No face detected")
+                    continue
+
+                # Run processing pipeline
+                blink_result = blink_detector.process_frame(frame)
+                pose_result = head_pose_estimator.process_frame(frame)
+                gaze_result = gaze_tracker.process_frame(frame)
+                pupil_result = pupil_detector.process_frame(frame)
+
+                # Draw landmarks
+                if face_result is not None:
+                    face_mesh_detector.draw_landmarks(frame, face_result)
+
+                # Extract and display cropped eye regions
+                left_eye, right_eye = eye_extractor.extract_eye_regions(frame)
+                if left_eye.is_valid:
+                    cv2.imshow("Left Eye", left_eye.image)
+                if right_eye.is_valid:
+                    cv2.imshow("Right Eye", right_eye.image)
+
+                # Generate feedback
+                feedback_text = feedback_system.get_feedback(
+                    blink_result,
+                    gaze_result,
+                    pose_result
+                )
+
+                # Prepare overlay text
+                overlay_text = [
+                    f"Blinks: {blink_result['blink_count']}",
+                    f"Gaze: {gaze_result.screen_coord}" if gaze_result.screen_coord else "Gaze: Not detected",
+                    f"Head Pose: {pose_result.euler_angles}" if pose_result else "Head Pose: Not detected",
+                    f"Confidence: {gaze_result.confidence:.2f}" if gaze_result else "Confidence: N/A",
+                    feedback_text
+                ]
+
+                # Draw overlay
+                y_start = 30
+                for text in overlay_text:
+                    cv2.putText(frame, text, (10, y_start), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    y_start += 30
+
+                # Show frame with landmarks
+                cv2.imshow("Integrated System", frame)
+                
             except Exception as e:
-                print(f"Error in GazeTracker: {e}")
+                print(f"Frame processing error: {e}")
 
-            print("Processing frame with PupilDetector...")
-            frame = pupil_detector.process_frame(frame)
-            print("PupilDetector completed.")
+            # Exit on 'q'
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                print("Exit requested")
+                break
 
-            # Resize the frame to increase dimensions
-            frame = cv2.resize(frame, (1280, 720))  # Resize to 1280x720 resolution
-            print("Frame resized to 1280x720.")
-
-            # Debug log to confirm frame dimensions
-            print(f"Frame dimensions: {frame.shape}")
-
-            # Overlay feedback and head pose information on the frame.
-            overlay_text = f"Feedback: {feedback_text}\nHead Pose: {head_pose_text}"
-            y0, dy = frame.shape[0] - 50, 20  # Start near the bottom of the frame
-            for i, line in enumerate(overlay_text.split('\n')):
-                y = y0 + i * dy
-                cv2.putText(frame, line, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
-
-            cv2.imshow("Integrated Interaction System", frame)
-            print("Frame displayed in OpenCV window.")  # Debug log to confirm display
-        except Exception as e:
-            print(f"Error processing frame: {e}")
-
-        # Add a small delay to ensure the window updates
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            print("Exiting loop.")
-            break
-
-    cap.release()
-    cv2.destroyAllWindows()
-    print("Camera released and all windows closed.")  # Debug log for cleanup
+    finally:
+        # Cleanup resources
+        cap.release()
+        cv2.destroyAllWindows()
+        print("Resources released")
 
 if __name__ == "__main__":
     main()
