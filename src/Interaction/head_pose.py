@@ -1,6 +1,9 @@
 # head_pose.py
 import cv2
 import numpy as np
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from collections import deque
 from typing import NamedTuple, Optional, Tuple, Deque
 from numpy.typing import NDArray
@@ -44,9 +47,9 @@ class HeadPoseEstimator:
         face_detector: FaceMeshDetector,
         camera_matrix: Optional[NDArray[np.float32]] = None,
         dist_coeffs: Optional[NDArray[np.float32]] = None,
-        smooth_factor: float = 0.2,
-        stability_window: int = 10,  # Number of frames to check for stability
-        stability_threshold: float = 5.0  # Maximum allowed variance for stability
+        smooth_factor: float = 0.5,  # Increased smoothing factor
+        stability_window: int = 20,  # Increased stability window
+        stability_threshold: float = 2.0  # Reduced stability threshold
     ):
         """
         Args:
@@ -71,9 +74,9 @@ class HeadPoseEstimator:
         self._pose_history = deque(maxlen=stability_window)  # Store recent head poses
 
     def _initialize_camera_matrix(self, frame_size: Tuple[int, int]):
-        """Initialize camera matrix if not provided"""
-        focal_length = frame_size[1]
-        center = (frame_size[1]/2, frame_size[0]/2)
+        """Initialize camera matrix with dynamic focal length."""
+        focal_length = max(frame_size)  # Use the larger dimension for better accuracy
+        center = (frame_size[1] / 2, frame_size[0] / 2)
         self._camera_matrix = np.array([
             [focal_length, 0, center[0]],
             [0, focal_length, center[1]],
@@ -81,21 +84,32 @@ class HeadPoseEstimator:
         ], dtype=np.float32)
 
     def _solve_pnp(self, image_points: NDArray[np.float32]) -> Optional[Tuple]:
-        """Core PnP solution with error handling"""
+        """Core PnP solution with stricter constraints."""
         try:
-            _, rvec, tvec, inliers = cv2.solvePnPRansac(
+            success, rvec, tvec = cv2.solvePnP(
                 self._3D_REF_POINTS,
                 image_points,
                 self._camera_matrix,
                 self.dist_coeffs,
-                flags=cv2.SOLVEPNP_ITERATIVE,
-                confidence=0.99,
-                reprojectionError=5.0
+                flags=cv2.SOLVEPNP_ITERATIVE
             )
-            return rvec, tvec, inliers
+            if not success:
+                print("HeadPoseEstimator: PnP solution failed.")
+                return None
+            return rvec, tvec
         except Exception as e:
-            print(f"PnP solving error: {str(e)}")
+            print(f"HeadPoseEstimator: Error solving PnP - {e}")
             return None
+
+    def _validate_landmarks(self, landmarks: NDArray[np.float32]) -> bool:
+        """Validate that all required landmarks are detected and within frame boundaries."""
+        if landmarks is None or len(landmarks) < len(self._LANDMARK_INDICES):
+            print("HeadPoseEstimator: Missing or invalid landmarks.")
+            return False
+        if not np.isfinite(landmarks).all():
+            print("HeadPoseEstimator: Landmarks contain invalid values.")
+            return False
+        return True
 
     def _calculate_reprojection_error(
         self,
@@ -103,29 +117,33 @@ class HeadPoseEstimator:
         tvec: NDArray,
         image_points: NDArray
     ) -> float:
-        """Calculate mean reprojection error"""
-        projected, _ = cv2.projectPoints(
-            self._3D_REF_POINTS,
-            rvec,
-            tvec,
-            self._camera_matrix,
-            self.dist_coeffs
-        )
-        return float(np.linalg.norm(projected.squeeze() - image_points))
+        """Calculate mean reprojection error."""
+        try:
+            projected, _ = cv2.projectPoints(
+                self._3D_REF_POINTS,
+                rvec,
+                tvec,
+                self._camera_matrix,
+                self.dist_coeffs
+            )
+            error = np.linalg.norm(projected.squeeze() - image_points, axis=1).mean()
+            return error
+        except Exception as e:
+            print(f"HeadPoseEstimator: Error calculating reprojection error - {e}")
+            return float('inf')
 
     def _convert_to_euler(self, rvec: NDArray) -> Tuple[float, float, float]:
-        """Convert rotation vector to Euler angles (pitch, yaw, roll)"""
-        rotation_mat, _ = cv2.Rodrigues(rvec)
-        
-        # Validate rotation matrix
-        if not np.isfinite(rotation_mat).all() or np.abs(rotation_mat[2, 0]) >= 1.0:
-            print("Invalid rotation matrix detected. Returning fallback angles.")
+        """Convert rotation vector to Euler angles (pitch, yaw, roll)."""
+        try:
+            rotation_mat, _ = cv2.Rodrigues(rvec)
+            if not np.isfinite(rotation_mat).all():
+                raise ValueError("Invalid rotation matrix detected.")
+
+            euler_angles = cv2.RQDecomp3x3(rotation_mat)[0]
+            return tuple(max(min(angle, 90.0), -90.0) for angle in euler_angles)
+        except Exception as e:
+            print(f"HeadPoseEstimator: Error converting to Euler angles - {e}")
             return 0.0, 0.0, 0.0
-        
-        euler_angles = cv2.RQDecomp3x3(rotation_mat)[0]
-        
-        # Clamp angles to avoid extreme values
-        return tuple(max(min(angle, 90.0), -90.0) for angle in euler_angles)
 
     def _smooth_euler_angles(self, new_angles: NDArray):
         """Apply exponential smoothing to Euler angles"""
@@ -136,24 +154,28 @@ class HeadPoseEstimator:
                               (1 - self.smooth_factor) * self._smoothed_euler)
 
     def _is_pose_stable(self) -> bool:
-        """
-        Check if the head pose values are stable over the recent frames.
-        
-        Returns:
-            bool: True if the variance of pitch, yaw, and roll is below the threshold.
-        """
+        """Check if the head pose values are stable over the recent frames."""
         if len(self._pose_history) < self.stability_window:
             return True  # Not enough data to determine stability
 
-        # Calculate variance for pitch, yaw, and roll
         pose_array = np.array(self._pose_history)
         variances = np.var(pose_array, axis=0)
-
-        # Check if all variances are below the threshold
         is_stable = np.all(variances < self.stability_threshold)
         if not is_stable:
             print(f"HeadPoseEstimator: Unstable pose detected. Variances: {variances}")
+            # Fallback: Use the last valid stable pose if available
+            if self._last_valid_result:
+                self._pose_history.clear()  # Reset history to avoid cascading instability
+                return True
         return is_stable
+
+    def _validate_physical_constraints(self, euler_angles: Tuple[float, float, float]) -> bool:
+        """Validate that the head pose is within realistic physical constraints."""
+        pitch, yaw, roll = euler_angles
+        if not (-90.0 <= pitch <= 90.0 and -90.0 <= yaw <= 90.0 and -45.0 <= roll <= 45.0):
+            print(f"HeadPoseEstimator: Pose out of physical constraints. Pitch={pitch}, Yaw={yaw}, Roll={roll}")
+            return False
+        return True
 
     @property
     def confidence(self) -> float:
@@ -163,11 +185,43 @@ class HeadPoseEstimator:
         avg_error = np.mean(self._reprojection_errors)
         return np.exp(-avg_error / 100.0)
 
-    def process_frame(self, frame: NDArray[np.uint8]) -> HeadPoseResult:
-        """Process a frame and return head pose results"""
+    @staticmethod
+    def draw_pose_point(
+        frame: NDArray[np.uint8],
+        result: HeadPoseResult,
+        camera_matrix: NDArray[np.float32]
+    ) -> None:
+        """Draw the head pose point (nose tip) on the frame."""
+        if result.confidence < 0.4 or result.landmarks is None:
+            return
+
+        # Get the nose tip point
+        nose_tip = tuple(result.landmarks[1].astype(int))
+        cv2.circle(frame, nose_tip, 5, (0, 0, 255), -1)  # Red dot for the nose tip
+        cv2.putText(frame, "Nose Tip", (nose_tip[0] + 10, nose_tip[1]),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+
+    def draw_face_bounding_box(self, frame: NDArray[np.uint8], landmarks: NDArray[np.float32]) -> None:
+        """
+        Draw a bounding box around the face.
+        """
+        x, y, w, h = cv2.boundingRect(landmarks.astype(np.int32))
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)  # Green box for the face
+        cv2.putText(frame, "Face", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+    def process_frame(self, frame: NDArray[np.uint8]) -> Optional[HeadPoseResult]:
+        """Process a frame and return head pose results."""
+        # Log frame dimensions for debugging
+        print(f"Processing frame of shape: {frame.shape}")
+
+        # Preprocess frame if needed (e.g., resizing or normalization)
+        if frame.shape[1] > 1280:
+            frame = cv2.resize(frame, (1280, 720))
+            print("Frame resized to 1280x720 for consistent processing.")
+
+        # Validate landmarks
         landmarks = self.detector.process_frame(frame)
-        if landmarks is None:
-            print("HeadPoseEstimator: No landmarks detected. Returning fallback result.")
+        if not self._validate_landmarks(landmarks):
             return self._fallback_result(frame)
 
         # Initialize camera matrix if needed
@@ -180,48 +234,46 @@ class HeadPoseEstimator:
         # Solve PnP
         pnp_result = self._solve_pnp(image_points)
         if pnp_result is None:
-            print("HeadPoseEstimator: PnP solution not found. Returning fallback result.")
+            print("HeadPoseEstimator: PnP solution not found.")
             return self._fallback_result(frame)
 
-        rvec, tvec, inliers = pnp_result
-        tvec = tvec.squeeze()
+        rvec, tvec = pnp_result
 
-        # Calculate metrics
-        reproj_error = self._calculate_reprojection_error(rvec, tvec, image_points)
-        self._reprojection_errors.append(reproj_error)
-        
-        # Convert to Euler angles and smooth
+        # Convert to Euler angles
         euler_angles = self._convert_to_euler(rvec)
+        if not self._validate_physical_constraints(euler_angles):
+            print(f"HeadPoseEstimator: Pose out of physical constraints. Pitch={euler_angles[0]:.1f}, "
+                  f"Yaw={euler_angles[1]:.1f}, Roll={euler_angles[2]:.1f}")
+            return self._fallback_result(frame)
+
+        # Smooth Euler angles
         self._smooth_euler_angles(np.array(euler_angles))
 
-        result = HeadPoseResult(
+        # Update last valid result
+        self._last_valid_result = HeadPoseResult(
             rvec=rvec,
             tvec=tvec,
             euler_angles=tuple(self._smoothed_euler.tolist()),
             landmarks=landmarks,
-            confidence=self.confidence
+            confidence=1.0  # Set confidence to 1.0 for a single valid candidate
         )
 
-        if result.confidence < 0.4:
-            print(f"HeadPoseEstimator: Low confidence ({result.confidence:.2f}). Returning fallback result.")
-            return self._fallback_result(frame)
+        # Draw face bounding box
+        if landmarks is not None:
+            self.draw_face_bounding_box(frame, landmarks)
 
-        # Add the current pose to the history
-        self._pose_history.append(result.euler_angles)
+        # Draw head pose point
+        if self._last_valid_result:
+            self.draw_pose_point(frame, self._last_valid_result, self._camera_matrix)
 
-        # Validate stability
-        if not self._is_pose_stable():
-            print("HeadPoseEstimator: Pose is unstable. Returning fallback result.")
-            return self._fallback_result(frame)
-
-        self._last_valid_result = result  # Update last valid result
-        return result
+        return self._last_valid_result
 
     def _fallback_result(self, frame: NDArray[np.uint8]) -> HeadPoseResult:
-        """Return the last valid result or a default result"""
+        """Return the last valid result or a default result."""
         if self._last_valid_result:
             print("Using last valid head pose result.")
             return self._last_valid_result
+        print("No valid pose available. Returning default pose.")
         return HeadPoseResult(
             rvec=np.zeros(3),
             tvec=np.zeros(3),
@@ -278,21 +330,22 @@ def main():
             result = estimator.process_frame(frame)
             
             # Draw visualization if confidence is high
-            if estimator._camera_matrix is not None and result.confidence > 0.4:
+            if estimator._camera_matrix is not None and result and result.confidence > 0.4:
                 frame = HeadPoseEstimator.draw_pose_axes(
                     frame, result, estimator._camera_matrix
                 )
 
             # Display Euler angles
-            pitch, yaw, roll = result.euler_angles
-            cv2.putText(frame, f"Pitch: {pitch:.1f}", (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
-            cv2.putText(frame, f"Yaw: {yaw:.1f}", (10, 60),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
-            cv2.putText(frame, f"Roll: {roll:.1f}", (10, 90),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
-            cv2.putText(frame, f"Confidence: {result.confidence:.2f}", (10, 120),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            if result:
+                pitch, yaw, roll = result.euler_angles
+                cv2.putText(frame, f"Pitch: {pitch:.1f}", (10, 30),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                cv2.putText(frame, f"Yaw: {yaw:.1f}", (10, 60),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                cv2.putText(frame, f"Roll: {roll:.1f}", (10, 90),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+                cv2.putText(frame, f"Confidence: {result.confidence:.2f}", (10, 120),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
 
             cv2.imshow("Head Pose Estimation", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):

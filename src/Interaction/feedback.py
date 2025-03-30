@@ -97,15 +97,13 @@ class FeedbackSystem:
         )
 
     def draw_analytics(self, result: FeedbackResult) -> NDArray[np.uint8]:
-        """Apply visual feedback to frame"""
+        """Apply visual feedback to frame."""
         annotated_frame = result.frame.copy()
-        
-        if self.config.show_landmarks and result.landmarks is not None:
-            self._draw_landmarks(annotated_frame, result.landmarks)
-            
-        if self.config.show_metrics:
-            self._draw_metrics(annotated_frame, result)
-            
+        y_offset = 30
+        cv2.putText(annotated_frame, f"EAR: {result.ear:.2f}", (10, y_offset),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(annotated_frame, f"Blinks: {result.blinks}", (10, y_offset + 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         return annotated_frame
 
     def _draw_landmarks(self, frame: NDArray[np.uint8], landmarks: NDArray[np.float32]) -> None:
@@ -177,12 +175,12 @@ class FeedbackSystem:
     def get_feedback(self, blink_result: dict, gaze_result: Any, pose_result: Any) -> str:
         """
         Generate feedback text based on blink, gaze, and head pose results.
-        
+
         Args:
             blink_result: Blink detection result dictionary.
             gaze_result: Gaze tracking result object.
             pose_result: Head pose estimation result object.
-        
+
         Returns:
             Feedback text as a string.
         """
@@ -194,21 +192,16 @@ class FeedbackSystem:
         else:
             feedback.append("No blink detected.")
 
-        # Gaze feedback
-        if gaze_result and gaze_result.screen_coord:
-            feedback.append(f"Gaze detected at {gaze_result.screen_coord}.")
-        else:
-            feedback.append("Gaze not detected.")
-
         # Head pose feedback
-        if pose_result and pose_result.confidence > 0.4:
-            feedback.append(f"Head pose: Pitch={pose_result.euler_angles[0]:.1f}, "
-                            f"Yaw={pose_result.euler_angles[1]:.1f}, "
-                            f"Roll={pose_result.euler_angles[2]:.1f}.")
+        if pose_result and pose_result.confidence > 0.3:  # Lowered confidence threshold
+            feedback.append(f"Head pose:")
+            feedback.append(f"  Pitch: {pose_result.euler_angles[0]:.1f}")
+            feedback.append(f"  Yaw: {pose_result.euler_angles[1]:.1f}")
+            feedback.append(f"  Roll: {pose_result.euler_angles[2]:.1f}")
         else:
             feedback.append("Head pose not detected or low confidence.")
 
-        return " ".join(feedback)
+        return "\n".join(feedback)
 
 def main() -> None:
     """Example usage with resource management"""

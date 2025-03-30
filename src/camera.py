@@ -34,12 +34,6 @@ except Exception as e:
     print(f"Error importing FeedbackSystem: {e}")
 
 try:
-    from Interaction.gaze_tracking import GazeTracker
-    print("GazeTracker imported successfully")
-except Exception as e:
-    print(f"Error importing GazeTracker: {e}")
-
-try:
     from Interaction.head_pose import HeadPoseEstimator
     print("HeadPoseEstimator imported successfully")
 except Exception as e:
@@ -56,12 +50,6 @@ try:
     print("DEFAULT imported successfully")
 except Exception as e:
     print(f"Error importing DEFAULT: {e}")
-
-try:
-    from Interaction.gaze_tracking import GazeConfig
-    print("GazeConfig imported successfully")
-except Exception as e:
-    print(f"Error importing GazeConfig: {e}")
 
 def main():
     print("Entering main function")
@@ -93,7 +81,6 @@ def main():
         feedback_system = FeedbackSystem(face_mesh_detector, blink_detector)
         head_pose_estimator = HeadPoseEstimator(face_mesh_detector)
         pupil_detector = PupilDetector(face_mesh_detector, eye_extractor, landmarks_config=DEFAULT)
-        gaze_tracker = GazeTracker(face_mesh_detector, eye_extractor, blink_detector, config=GazeConfig())  # Pass GazeConfig here
         
         print("All modules initialized successfully")
     except Exception as e:
@@ -127,7 +114,6 @@ def main():
                 # Run processing pipeline
                 blink_result = blink_detector.process_frame(frame)
                 pose_result = head_pose_estimator.process_frame(frame)
-                gaze_result = gaze_tracker.process_frame(frame)
                 pupil_result = pupil_detector.process_frame(frame)
 
                 # Draw landmarks
@@ -144,16 +130,14 @@ def main():
                 # Generate feedback
                 feedback_text = feedback_system.get_feedback(
                     blink_result,
-                    gaze_result,
+                    None,  # Removed gaze_result
                     pose_result
                 )
 
                 # Prepare overlay text
                 overlay_text = [
                     f"Blinks: {blink_result['blink_count']}",
-                    f"Gaze: {gaze_result.screen_coord}" if gaze_result.screen_coord else "Gaze: Not detected",
                     f"Head Pose: {pose_result.euler_angles}" if pose_result else "Head Pose: Not detected",
-                    f"Confidence: {gaze_result.confidence:.2f}" if gaze_result else "Confidence: N/A",
                     feedback_text
                 ]
 

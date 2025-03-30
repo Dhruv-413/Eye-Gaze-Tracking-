@@ -1,2 +1,4 @@
 data/gazecapture.part/
 data/output/
+src/core/_pycache__/
+src/Interaction/__pycache__/

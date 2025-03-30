@@ -81,6 +81,14 @@ class FaceMeshDetector:
         for x, y in landmarks:
             cv2.circle(frame, (int(x), int(y)), 2, (0, 255, 0), -1, cv2.LINE_AA)
 
+    def draw_face_bounding_box(self, frame: NDArray[np.uint8], landmarks: NDArray[np.float32]) -> None:
+        """
+        Draw a bounding box around the face.
+        """
+        x, y, w, h = cv2.boundingRect(landmarks.astype(np.int32))
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        cv2.putText(frame, "Face", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
     def crop_eye_region(self, frame: NDArray[np.uint8], landmarks: NDArray[np.float32], eye_indices: NDArray[np.int32]) -> Optional[NDArray[np.uint8]]:
         """
         Crop the eye region based on landmarks.
