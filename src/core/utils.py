@@ -1,6 +1,7 @@
 # utils.py
 import cv2
 import numpy as np
+import logging
 from typing import Tuple, Sequence, Optional
 from numpy.typing import NDArray
 
@@ -54,3 +55,12 @@ def draw_landmarks(
     # Efficient batch drawing using list comprehension
     [cv2.circle(frame, (int(x), int(y)), radius, color, -1, cv2.LINE_AA) 
      for (x, y) in landmarks]
+
+def setup_logging(log_file: str = "system.log"):
+    """Set up logging for the application."""
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    logging.info("Logging initialized.")

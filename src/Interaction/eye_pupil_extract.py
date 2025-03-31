@@ -1,6 +1,7 @@
 # eye_pupil_extract.py
 import cv2
 import numpy as np
+import logging
 from typing import NamedTuple, Optional, Tuple
 from numpy.typing import NDArray
 from core.face_tracker import FaceMeshDetector
@@ -14,22 +15,15 @@ class EyeRegion(NamedTuple):
 
 class EyeRegionExtractor:
     """
-    Enhanced eye region extractor with error handling and adaptive processing
-    
-    Features:
-    - Robust bounding box calculations with safety checks
-    - Adaptive image preprocessing
-    - Landmark validation
-    - Configurable region padding
-    - Detailed return structure
+    Enhanced eye region extractor with error handling and adaptive processing.
     """
-    
+
     def __init__(
         self,
         face_detector: FaceMeshDetector,
         padding_ratio: float = 0.4,
         min_eye_size: int = 20,
-        config: FaceLandmarks = DEFAULT  # Use DEFAULT directly
+        config: FaceLandmarks = DEFAULT
     ):
         """
         Args:
@@ -47,6 +41,9 @@ class EyeRegionExtractor:
         self.left_eye_indices = config.LEFT_EYE
         self.right_eye_indices = config.RIGHT_EYE
 
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+
     def _process_eye_region(
         self,
         frame: NDArray[np.uint8],
@@ -60,17 +57,18 @@ class EyeRegionExtractor:
 
             # Validate minimum size and aspect ratio
             if w < self.min_eye_size or h < self.min_eye_size:
-                print(f"Eye region too small: width={w}, height={h}. Skipping.")
+                self.logger.warning(f"Eye region too small: width={w}, height={h}. Skipping.")
                 return EyeRegion(np.array([]), (0, 0, 0, 0), np.array([]), False)
-            if w / h < 1.5:  # Relaxed aspect ratio check
-                print(f"Eye region has invalid aspect ratio: width={w}, height={h}. Skipping.")
+            if w / h < 1.2:  # Relaxed aspect ratio check
+                self.logger.warning(f"Eye region has invalid aspect ratio: width={w}, height={h}. Skipping.")
                 return EyeRegion(np.array([]), (0, 0, 0, 0), np.array([]), False)
 
             cropped_eye = frame[y:y+h, x:x+w]
             processed = self._preprocess_region(cropped_eye)
+            self.logger.debug(f"Processed eye region with bbox={x, y, w, h}")
             return EyeRegion(processed, (x, y, w, h), eye_points, True)
         except Exception as e:
-            print(f"Error processing eye region: {e}")
+            self.logger.error(f"Error processing eye region: {e}")
             return EyeRegion(np.array([]), (0, 0, 0, 0), np.array([]), False)
 
     def _safe_bounding_rect(
@@ -89,7 +87,7 @@ class EyeRegionExtractor:
 
         # Adjust bounding box dimensions dynamically if too small
         if w < self.min_eye_size or h < self.min_eye_size:
-            print(f"Invalid bounding box: width={w}, height={h}. Adjusting padding.")
+            self.logger.warning(f"Invalid bounding box: width={w}, height={h}. Adjusting padding.")
             pad_x = max(pad_x, self.min_eye_size - w)
             pad_y = max(pad_y, self.min_eye_size - h)
 
@@ -100,26 +98,30 @@ class EyeRegionExtractor:
 
         # Ensure the bounding box is valid
         if x2 - x1 <= 0 or y2 - y1 <= 0:
-            print("Adjusted bounding box is invalid. Skipping.")
+            self.logger.warning("Adjusted bounding box is invalid. Skipping.")
             return 0, 0, 0, 0
 
         return x1, y1, x2 - x1, y2 - y1
 
     def _preprocess_region(self, region: NDArray[np.uint8]) -> NDArray[np.uint8]:
-        """Apply adaptive preprocessing to eye region"""
+        """Apply adaptive preprocessing to eye region with reflection handling."""
         # Convert to grayscale
         gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
-        
+
         # Adaptive histogram equalization
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(gray)
-        
+
         # Denoising
         denoised = cv2.fastNlMeansDenoising(enhanced, h=10)
-        
+
+        # Morphological operations to reduce glare and reflections
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        morphed = cv2.morphologyEx(denoised, cv2.MORPH_CLOSE, kernel)
+
         # Normalization
-        normalized = cv2.normalize(denoised, None, 0, 255, cv2.NORM_MINMAX)
-        
+        normalized = cv2.normalize(morphed, None, 0, 255, cv2.NORM_MINMAX)
+
         return normalized
 
     @staticmethod
@@ -149,17 +151,17 @@ class EyeRegionExtractor:
         Extract and preprocess both eye regions.
         """
         # Log frame dimensions for debugging
-        print(f"Processing frame of shape: {frame.shape}")
+        self.logger.info(f"Processing frame of shape: {frame.shape}")
 
         # Preprocess frame if needed (e.g., resizing or normalization)
         if frame.shape[1] > 1280:
             frame = cv2.resize(frame, (1280, 720))
-            print("Frame resized to 1280x720 for consistent processing.")
+            self.logger.info("Frame resized to 1280x720 for consistent processing.")
 
         # Validate landmarks
         landmarks = self.face_detector.process_frame(frame)
         if landmarks is None:
-            print("No landmarks detected.")
+            self.logger.warning("No landmarks detected.")
             return EyeRegion(np.array([]), (0, 0, 0, 0), np.array([]), False), \
                    EyeRegion(np.array([]), (0, 0, 0, 0), np.array([]), False)
 
@@ -170,6 +172,7 @@ class EyeRegionExtractor:
         self.draw_eye_bounding_box(frame, left_eye)
         self.draw_eye_bounding_box(frame, right_eye)
 
+        self.logger.info("Extracted eye regions.")
         return left_eye, right_eye
 
     @staticmethod

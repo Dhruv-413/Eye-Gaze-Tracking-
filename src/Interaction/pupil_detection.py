@@ -1,6 +1,7 @@
 # pupil_detection.py
 import cv2
 import numpy as np
+import logging
 from typing import NamedTuple, Optional, Tuple, List
 from numpy.typing import NDArray
 from collections import deque
@@ -27,35 +28,31 @@ class PupilConfig(NamedTuple):
 
 class PupilDetector:
     """
-    Enhanced pupil detection system with temporal smoothing and confidence scoring
-    
-    Features:
-    - Adaptive thresholding with CLAHE preprocessing
-    - Circularity-based contour validation
-    - Temporal smoothing of pupil positions
-    - Confidence scoring for detections
-    - Configurable parameters
-    - Resource management
+    Enhanced pupil detection system with temporal smoothing and confidence scoring.
     """
-    
+
     def __init__(
         self,
         face_detector: FaceMeshDetector,
         eye_extractor: EyeRegionExtractor,
         config: PupilConfig = PupilConfig(),
-        landmarks_config=DEFAULT  # Use DEFAULT directly
+        landmarks_config=DEFAULT
     ):
         self.detector = face_detector
         self.eye_extractor = eye_extractor
         self.config = config
         self.landmarks_config = landmarks_config
-        
+
         # State management
         self._position_history = deque(maxlen=config.temporal_smoothing)
         self._confidence_history = deque(maxlen=config.temporal_smoothing)
 
+        # Logging setup
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+
     def _preprocess_eye(self, eye_region: NDArray[np.uint8]) -> Tuple[NDArray[np.uint8], int]:
-        """Enhanced preprocessing pipeline with dynamic thresholding."""
+        """Preprocess the eye region with dynamic thresholding."""
         # Convert to grayscale if needed
         gray = cv2.cvtColor(eye_region, cv2.COLOR_BGR2GRAY) if len(eye_region.shape) == 3 else eye_region
 
@@ -72,6 +69,7 @@ class PupilDetector:
         adjusted_c = self.config.adaptive_thresh_c + int((mean_intensity - 128) / 10)
         adjusted_c = max(1, min(adjusted_c, 10))  # Clamp to a reasonable range
 
+        self.logger.debug(f"Preprocessed eye region with adjusted_c={adjusted_c}")
         return blurred, adjusted_c
 
     def _detect_candidates(self, processed_eye: NDArray[np.uint8], adjusted_c: int) -> Optional[Tuple[NDArray, float]]:
@@ -84,6 +82,10 @@ class PupilDetector:
             self.config.adaptive_thresh_block,
             adjusted_c
         )
+
+        # Morphological operations to reduce noise
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
 
         # Debug: Display thresholded image
         if self.config.show_processing:
@@ -102,7 +104,10 @@ class PupilDetector:
                 if perimeter == 0:
                     continue
                 circularity = 4 * np.pi * area / (perimeter ** 2)
-                if circularity >= self.config.min_circularity:
+                solidity = cv2.contourArea(cnt) / cv2.contourArea(cv2.convexHull(cnt))  # Solidity metric
+                aspect_ratio = max(cv2.boundingRect(cnt)[2:]) / min(cv2.boundingRect(cnt)[2:])  # Aspect ratio
+
+                if circularity >= self.config.min_circularity and solidity > 0.8 and aspect_ratio < 2.0:
                     # Calculate distance to center
                     M = cv2.moments(cnt)
                     if M["m00"] == 0:
@@ -121,22 +126,27 @@ class PupilDetector:
                         best_contour = cnt
 
         if best_contour is None:
-            print("No valid pupil contour found.")
+            self.logger.warning("No valid pupil contour found.")
         else:
-            print(f"Selected contour with confidence: {best_confidence:.2f}")
+            self.logger.info(f"Selected contour with confidence: {best_confidence:.2f}")
 
         return (best_contour, best_confidence) if best_contour is not None else None
 
-    def _calculate_pupil_center(self, contour: NDArray) -> Optional[Tuple[int, int]]:
-        """Calculate centroid with moment validation"""
+    def _calculate_pupil_center(self, contour: NDArray, eye_bbox: Tuple[int, int, int, int]) -> Optional[Tuple[int, int]]:
+        """Calculate centroid with moment validation and map to original frame coordinates."""
         M = cv2.moments(contour)
         if M["m00"] == 0:
             return None
-        return (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+        cx = int(M["m10"] / M["m00"])
+        cy = int(M["m01"] / M["m00"])
 
-    def detect_pupil(self, eye_region: NDArray[np.uint8]) -> PupilDetectionResult:
+        # Map to original frame coordinates
+        x_offset, y_offset, _, _ = eye_bbox
+        return cx + x_offset, cy + y_offset
+
+    def detect_pupil(self, eye_region: EyeRegion) -> PupilDetectionResult:
         """Main detection pipeline."""
-        processed, adjusted_c = self._preprocess_eye(eye_region)
+        processed, adjusted_c = self._preprocess_eye(eye_region.image)
         candidate = self._detect_candidates(processed, adjusted_c)
 
         if candidate is None:
@@ -148,8 +158,9 @@ class PupilDetector:
             )
 
         best_contour, best_confidence = candidate
-        pupil_center = self._calculate_pupil_center(best_contour)
+        pupil_center = self._calculate_pupil_center(best_contour, eye_region.bbox)
 
+        self.logger.info(f"Pupil detected at {pupil_center} with confidence {best_confidence:.2f}")
         return PupilDetectionResult(
             pupil_center=pupil_center,
             contour=best_contour,
@@ -171,7 +182,7 @@ class PupilDetector:
                 results.append(PupilDetectionResult(None, None, 0.0, None))
                 continue
 
-            result = self.detect_pupil(eye_region.image)
+            result = self.detect_pupil(eye_region)
             results.append(result)
 
             # Draw pupil bounding box
@@ -179,8 +190,9 @@ class PupilDetector:
                 EyeRegionExtractor.draw_pupil_bounding_box(frame, (result.pupil_center[0], result.pupil_center[1], cv2.boundingRect(result.contour)))
 
             # Debug: Log pupil detection results
-            print(f"{pos.capitalize()} Eye - Pupil Center: {result.pupil_center}, Confidence: {result.confidence:.2f}")
+            self.logger.info(f"{pos.capitalize()} Eye - Pupil Center: {result.pupil_center}, Confidence: {result.confidence:.2f}")
 
+        self.logger.info(f"Processed frame with {len(results)} pupil detections.")
         return frame, results
 
     @property

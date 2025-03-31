@@ -72,7 +72,7 @@ class EyeBlinkDetector:
         if len(self.calibration_values) < self.calibration_frames:
             self.calibration_values.append(ear)
             if len(self.calibration_values) == self.calibration_frames:
-                self._dynamic_threshold = np.mean(self.calibration_values) * 0.7
+                self._dynamic_threshold = np.mean(self.calibration_values) * 0.6  # Lowered threshold multiplier
                 print(f"Calibration complete. Dynamic EAR threshold set to {self._dynamic_threshold:.2f}")
 
     def _detect_blink(self, smoothed_ear: float) -> bool:
