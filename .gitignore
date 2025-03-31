@@ -1,4 +1,4 @@
 data/gazecapture.part/
 data/output/
-__pycache__/
+**/__pycache__/
 *.py[cod]
