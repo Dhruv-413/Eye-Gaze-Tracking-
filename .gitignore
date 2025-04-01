@@ -2,3 +2,4 @@ data/gazecapture.part/
 data/output/
 **/__pycache__/
 *.py[cod]
+.venv/

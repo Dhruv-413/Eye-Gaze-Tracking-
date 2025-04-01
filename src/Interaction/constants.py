@@ -3,8 +3,11 @@ import numpy as np
 from typing import Final, NamedTuple, Dict
 from numpy.typing import NDArray
 
+MAX_MEDIAPIPE_INDEX: Final[int] = 467
+MAX_DLIB_INDEX: Final[int] = 67
+
 class LandmarkIndices(NamedTuple):
-    """Container for facial landmark index groupings"""
+    """Container for facial landmark index groupings."""
     LEFT_EYE: NDArray[np.int32]
     RIGHT_EYE: NDArray[np.int32]
     LEFT_IRIS: NDArray[np.int32]
@@ -13,45 +16,45 @@ class LandmarkIndices(NamedTuple):
     HEAD_REFERENCE: Dict[str, int]
 
 class FaceLandmarks:
-    
-    # MediaPipe standard indices (468-point model)
+    """
+    Provides standard facial landmark index configurations.
+    Supports MediaPipe and an example DLIB configuration.
+    """
     MEDIAPIPE: Final[LandmarkIndices] = LandmarkIndices(
         LEFT_EYE=np.array([362, 385, 387, 263, 373, 380], dtype=np.int32),
         RIGHT_EYE=np.array([33, 160, 158, 133, 153, 144], dtype=np.int32),
         LEFT_IRIS=np.array([474, 475, 476, 477], dtype=np.int32),
         RIGHT_IRIS=np.array([469, 470, 471, 472], dtype=np.int32),
         NOSE=1,
-        HEAD_REFERENCE={
-            "left_eye": 33,    # Left eye outer corner
-            "right_eye": 263,  # Right eye outer corner
-            "nose_tip": 4      # Alternative nose reference
-        }
+        HEAD_REFERENCE={"left_eye": 33, "right_eye": 263, "nose_tip": 4}
+    )
+
+    DLIB_COMPAT: Final[LandmarkIndices] = LandmarkIndices(
+        LEFT_EYE=np.array([36, 37, 38, 39, 40, 41], dtype=np.int32),
+        RIGHT_EYE=np.array([42, 43, 44, 45, 46, 47], dtype=np.int32),
+        LEFT_IRIS=np.array([], dtype=np.int32),
+        RIGHT_IRIS=np.array([], dtype=np.int32),
+        NOSE=30,
+        HEAD_REFERENCE={"left_eye": 36, "right_eye": 45, "nose_tip": 30}
     )
 
     @classmethod
     def validate_indices(cls, config: LandmarkIndices) -> bool:
-        """Validate that all indices are within expected ranges"""
-        max_mediapipe = 467
-        max_dlib = 67
-        
         all_indices = np.concatenate([
             config.LEFT_EYE,
             config.RIGHT_EYE,
             config.LEFT_IRIS,
             config.RIGHT_IRIS,
-            [config.NOSE],
-            list(config.HEAD_REFERENCE.values())
+            np.array([config.NOSE], dtype=np.int32),
+            np.array(list(config.HEAD_REFERENCE.values()), dtype=np.int32)
         ])
-        
         if config is cls.MEDIAPIPE:
-            return np.all(all_indices <= max_mediapipe)
+            return np.all(all_indices <= MAX_MEDIAPIPE_INDEX)
         elif config is cls.DLIB_COMPAT:
-            return np.all(all_indices <= max_dlib)
+            return np.all(all_indices <= MAX_DLIB_INDEX)
         return False
 
-# Default configuration using MediaPipe indices
 DEFAULT: Final[LandmarkIndices] = FaceLandmarks.MEDIAPIPE
 
-# Define indices for EAR calculation
-LEFT_EYE_EAR_IDX = np.array([362, 385, 387, 263, 373, 380], dtype=np.int32)  # Example indices for left eye
-RIGHT_EYE_EAR_IDX = np.array([33, 160, 158, 133, 153, 144], dtype=np.int32)  # Example indices for right eye
+LEFT_EYE_EAR_IDX: Final[NDArray[np.int32]] = np.array([362, 385, 387, 263, 373, 380], dtype=np.int32)
+RIGHT_EYE_EAR_IDX: Final[NDArray[np.int32]] = np.array([33, 160, 158, 133, 153, 144], dtype=np.int32)
