@@ -40,17 +40,6 @@ python train.py --model_type mobilenet
 python train.py --disable_gpu --disable_mixed_precision
 ```
 
-### Running Real-time Inference
-
-```bash
-# Run with default webcam
-python inference.py --model path_to_model.h5
-
-# Specify a different camera
-python inference.py --model path_to_model.h5 --camera 1
-
-# Show debug information
-python inference.py --model path_to_model.h5 --debug
 ```
 
 ## Required Packages
