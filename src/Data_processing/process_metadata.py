@@ -53,5 +53,5 @@ def process_all_folders(output_dir):
                 print(f"Metadata file not found in folder: {folder}")
 
 if __name__ == "__main__":
-    output_directory = "c:\\Users\\dhruv\\OneDrive\\Desktop\\minor project\\Extraction\\output"
+    output_directory = "output"
     process_all_folders(output_directory)

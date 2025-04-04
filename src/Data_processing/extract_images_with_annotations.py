@@ -1,10 +1,8 @@
 import os
 import json
 from PIL import Image
-from PIL import ImageOps  # Import ImageOps for grayscale conversion
-from PIL import ImageEnhance  # Import ImageEnhance for brightness, contrast, and color adjustments
-import cv2  # Import OpenCV
-import numpy as np  # Import NumPy
+import cv2
+import numpy as np
 
 def extract_images_with_annotations(data_dir, output_dir):
     # List of required JSON files
@@ -71,67 +69,13 @@ def extract_images_with_annotations(data_dir, output_dir):
         # Convert back to PIL Image for further processing
         frame = Image.fromarray(frame_gray)
 
-        # Function to perform moderate geometric and photometric augmentation
-        def augment_and_save(image, base_path, prefix, is_eye_region=False):
-            paths = []
-            # Save original image
-            original_path = f"{base_path}_{prefix}.jpg"
-            image.save(original_path)
-            paths.append(original_path)
-
-            # Horizontal flip (adjust labels accordingly if needed)
-            if not is_eye_region:  # Avoid flipping eye regions
-                flipped_path = f"{base_path}_{prefix}_flipped.jpg"
-                flipped = ImageOps.mirror(image)
-                flipped.save(flipped_path)
-                paths.append(flipped_path)
-
-            # Slight rotation (small angles)
-            for angle in [-10, 10]:  # Rotate by -10 and +10 degrees
-                rotated_path = f"{base_path}_{prefix}_rotated_{angle}.jpg"
-                rotated = image.rotate(angle, expand=True)
-                rotated.save(rotated_path)
-                paths.append(rotated_path)
-
-            # Slight cropping and scaling
-            if not is_eye_region:  # Avoid aggressive cropping/scaling on eye regions
-                width, height = image.size
-                crop_margin = 0.1  # Crop 10% from each side
-                cropped = image.crop((
-                    int(crop_margin * width),
-                    int(crop_margin * height),
-                    int((1 - crop_margin) * width),
-                    int((1 - crop_margin) * height)
-                ))
-                cropped = cropped.resize((width, height))  # Scale back to original size
-                cropped_path = f"{base_path}_{prefix}_cropped.jpg"
-                cropped.save(cropped_path)
-                paths.append(cropped_path)
-
-            # Photometric augmentations (brightness only for eye regions)
-            for factor in [0.9, 1.1]:  # Slightly decrease/increase brightness
-                brightness_path = f"{base_path}_{prefix}_brightness_{factor}.jpg"
-                brightness = ImageEnhance.Brightness(image).enhance(factor)
-                brightness.save(brightness_path)
-                paths.append(brightness_path)
-
-                if not is_eye_region:  # Additional photometric changes for non-eye regions
-                    # Contrast adjustment
-                    contrast_path = f"{base_path}_{prefix}_contrast_{factor}.jpg"
-                    contrast = ImageEnhance.Contrast(image).enhance(factor)
-                    contrast.save(contrast_path)
-                    paths.append(contrast_path)
-
-                    # Color adjustment
-                    color_path = f"{base_path}_{prefix}_color_{factor}.jpg"
-                    color = ImageEnhance.Color(image).enhance(factor)
-                    color.save(color_path)
-                    paths.append(color_path)
-
-            return paths
+        # Simple function to save image without augmentation
+        def save_image(image, output_path):
+            image.save(output_path)
+            return output_path
 
         # Extract face bounding box
-        face_files = None
+        face_file = None
         if i < len(apple_face["IsValid"]) and apple_face["IsValid"][i]:
             face_crop = frame.crop((
                 apple_face["X"][i],
@@ -139,32 +83,32 @@ def extract_images_with_annotations(data_dir, output_dir):
                 apple_face["X"][i] + apple_face["W"][i],
                 apple_face["Y"][i] + apple_face["H"][i]
             ))
-            face_file_base = os.path.join(face_dir, f"frame_{i}_face")
-            face_files = augment_and_save(face_crop, face_file_base, "face")
+            face_file_path = os.path.join(face_dir, f"frame_{i}_face.jpg")
+            face_file = save_image(face_crop, face_file_path)
 
         # Extract left eye bounding box
-        left_eye_files = None
-        if i < len(apple_left_eye["IsValid"]) and apple_left_eye["IsValid"][i] and face_files:
+        left_eye_file = None
+        if i < len(apple_left_eye["IsValid"]) and apple_left_eye["IsValid"][i] and face_file:
             left_eye_crop = face_crop.crop((
                 apple_left_eye["X"][i],
                 apple_left_eye["Y"][i],
                 apple_left_eye["X"][i] + apple_left_eye["W"][i],
                 apple_left_eye["Y"][i] + apple_left_eye["H"][i]
             ))
-            left_eye_file_base = os.path.join(left_eye_dir, f"frame_{i}_left_eye")
-            left_eye_files = augment_and_save(left_eye_crop, left_eye_file_base, "left_eye", is_eye_region=True)
+            left_eye_file_path = os.path.join(left_eye_dir, f"frame_{i}_left_eye.jpg")
+            left_eye_file = save_image(left_eye_crop, left_eye_file_path)
 
         # Extract right eye bounding box
-        right_eye_files = None
-        if i < len(apple_right_eye["IsValid"]) and apple_right_eye["IsValid"][i] and face_files:
+        right_eye_file = None
+        if i < len(apple_right_eye["IsValid"]) and apple_right_eye["IsValid"][i] and face_file:
             right_eye_crop = face_crop.crop((
                 apple_right_eye["X"][i],
                 apple_right_eye["Y"][i],
                 apple_right_eye["X"][i] + apple_right_eye["W"][i],
                 apple_right_eye["Y"][i] + apple_right_eye["H"][i]
             ))
-            right_eye_file_base = os.path.join(right_eye_dir, f"frame_{i}_right_eye")
-            right_eye_files = augment_and_save(right_eye_crop, right_eye_file_base, "right_eye", is_eye_region=True)
+            right_eye_file_path = os.path.join(right_eye_dir, f"frame_{i}_right_eye.jpg")
+            right_eye_file = save_image(right_eye_crop, right_eye_file_path)
 
         # Link with dot information
         dot_data = {
@@ -195,12 +139,12 @@ def extract_images_with_annotations(data_dir, output_dir):
             "Orientation": screen_data["Orientation"][i] if i < len(screen_data["Orientation"]) else None
         }
 
-        # Append metadata with augmented image paths
+        # Append metadata with original image paths only (no augmentation)
         metadata.append({
             "frame": frame_file,
-            "face_images": face_files,
-            "left_eye_images": left_eye_files,
-            "right_eye_images": right_eye_files,
+            "face_image": face_file,
+            "left_eye_image": left_eye_file,
+            "right_eye_image": right_eye_file,
             "dot_data": dot_data,
             "face_grid_data": face_grid_data,
             "motion_data": motion_entry,
@@ -223,6 +167,6 @@ def process_all_folders(parent_dir, output_dir):
             print(f"Skipping non-directory item: {folder_path}")
 
 # Example usage
-parent_directory = "c:\\Users\\dhruv\\OneDrive\\Desktop\\minor project\\Extraction\\gazecapture.part\\gazecapture"
-output_directory = "c:\\Users\\dhruv\\OneDrive\\Desktop\\minor project\\Extraction\\output"
+parent_directory = "gazecapture.part\gazecapture"
+output_directory = "output"
 process_all_folders(parent_directory, output_directory)

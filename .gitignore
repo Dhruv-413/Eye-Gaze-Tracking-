@@ -1,5 +1,5 @@
-data/gazecapture.part/
-data/output/
+gazecapture.part/
+output/
 **/__pycache__/
 *.py[cod]
 .venv/
