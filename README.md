@@ -53,6 +53,7 @@ python train.py --disable_gpu --disable_mixed_precision
 ## Dataset Structure
 Below is an example of the directory layout:
 ```
+```
 dataset/
  └── participant_001/
      ├── frames/
@@ -62,6 +63,7 @@ dataset/
      ├── frames/
      ├── metadata.json
      ├── ...
+```
 ```
 Each `metadata.json` file references frames and associated annotations.
 
