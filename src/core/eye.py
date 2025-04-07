@@ -22,23 +22,21 @@ class EyeRegion:
 
 class EyeProcessor:
     def __init__(self, closed_threshold: float = 0.2, min_eye_size: int = 10):
-        self.closed_threshold = closed_threshold
-        self.min_eye_size = min_eye_size
-        self.left_eye_indices = FaceLandmarks.LEFT_EYE
-        self.right_eye_indices = FaceLandmarks.RIGHT_EYE
-    
-    def __init__(self, 
-                 min_eye_size: int = 10):
         """
         Initialize the eye processor.
         
         Args:
-            closed_threshold: Threshold for eye aspect ratio to consider eye closed
-            min_eye_size: Minimum size (width or height) for valid eye region
+            closed_threshold: Threshold for eye aspect ratio to consider the eye closed.
+            min_eye_size: Minimum pixel dimension for a valid eye region.
         """
+        # Validate min eye size
         self._validate_min_size(min_eye_size)
         self.min_eye_size = min_eye_size
-
+        # Set closed threshold (reuse validation if needed)
+        self.closed_threshold = closed_threshold
+        self.left_eye_indices = FaceLandmarks.LEFT_EYE
+        self.right_eye_indices = FaceLandmarks.RIGHT_EYE
+    
     @staticmethod
     def _validate_threshold(value: float) -> None:
         """Validate that threshold value is appropriate."""

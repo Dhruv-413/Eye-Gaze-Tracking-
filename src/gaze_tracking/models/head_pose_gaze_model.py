@@ -1,5 +1,5 @@
 """
-Model that combines face, eye images and head pose data for gaze prediction
+Model that combines face, eye images, head pose data, and metadata for gaze prediction
 """
 
 import tensorflow as tf
@@ -8,24 +8,26 @@ from tensorflow.keras.layers import ( # type: ignore
     Input, Conv2D, MaxPooling2D, Dense, Flatten, 
     Dropout, BatchNormalization, Concatenate, GlobalAveragePooling2D
 )
-from tensorflow.keras.applications import MobileNetV2, ResNet50 # type: ignore
+from tensorflow.keras.applications import ResNet50, MobileNetV2 # type: ignore
 from tensorflow.keras.optimizers import Adam # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint # type: ignore
 from typing import Tuple, Dict, Any, Optional
 
 def create_head_pose_gaze_model(
-    input_shape: Tuple[int, int, int] = (64, 64, 3),
-    use_mixed_precision: bool = False
+    input_shape: Tuple[int, int, int] = (224, 224, 3),
+    use_mixed_precision: bool = False,
+    metadata_shape: int = 6  # Dimension of metadata features
 ) -> Model:
     """
-    Create a model that uses face, eyes, and head pose for gaze prediction
+    Create a model that uses face, eyes, head pose and metadata for gaze prediction
     
     Args:
         input_shape: Input shape for image inputs
         use_mixed_precision: Whether to use mixed precision
+        metadata_shape: Dimension of metadata input vector
         
     Returns:
-        Keras Model with multiple inputs including head pose
+        Keras Model with multiple inputs including head pose and metadata
     """
     # Set precision policy
     if use_mixed_precision:
@@ -38,8 +40,9 @@ def create_head_pose_gaze_model(
     left_eye_input = Input(shape=input_shape, name='left_eye_input')
     right_eye_input = Input(shape=input_shape, name='right_eye_input')
     head_pose_input = Input(shape=(3,), name='head_pose_input')  # pitch, yaw, roll
+    metadata_input = Input(shape=(metadata_shape,), name='metadata_input')  # New metadata input
     
-    # Face branch using MobileNetV2
+    # Face branch using ResNet50
     face_model = ResNet50(
         weights='imagenet', 
         include_top=False, 
@@ -47,7 +50,7 @@ def create_head_pose_gaze_model(
         input_shape=input_shape
     )
     
-    # Freeze early layers of MobileNetV2
+    # Freeze early layers of ResNet50
     for layer in face_model.layers[:-20]:
         layer.trainable = False
     
@@ -83,9 +86,15 @@ def create_head_pose_gaze_model(
     head_pose_features = Dense(128, activation='relu')(head_pose_features)
     head_pose_features = Dense(256, activation='relu')(head_pose_features)
     
+    # Process metadata
+    metadata_features = Dense(64, activation='relu')(metadata_input)
+    metadata_features = BatchNormalization()(metadata_features)
+    metadata_features = Dense(128, activation='relu')(metadata_features)
+    metadata_features = BatchNormalization()(metadata_features)
+    
     # Combine all features
     combined_features = Concatenate()(
-        [face_features, left_eye_features, right_eye_features, head_pose_features]
+        [face_features, left_eye_features, right_eye_features, head_pose_features, metadata_features]
     )
     
     # Fully connected layers
@@ -99,7 +108,7 @@ def create_head_pose_gaze_model(
     
     # Create the model
     model = Model(
-        inputs=[face_input, left_eye_input, right_eye_input, head_pose_input],
+        inputs=[face_input, left_eye_input, right_eye_input, head_pose_input, metadata_input],
         outputs=outputs
     )
     
@@ -113,18 +122,20 @@ def create_head_pose_gaze_model(
     return model
 
 def create_face_and_head_pose_model(
-    input_shape: Tuple[int, int, int] = (64, 64, 3),
-    use_mixed_precision: bool = False
+    input_shape: Tuple[int, int, int] = (224, 224, 3),
+    use_mixed_precision: bool = False,
+    metadata_shape: int = 6  # Dimension of metadata features
 ) -> Model:
     """
-    Create a simpler model that uses only face and head pose for gaze prediction
+    Create a simpler model that uses face, head pose and metadata for gaze prediction
     
     Args:
         input_shape: Input shape for image inputs
         use_mixed_precision: Whether to use mixed precision
+        metadata_shape: Dimension of metadata input vector
         
     Returns:
-        Keras Model with face and head pose inputs
+        Keras Model with face, head pose and metadata inputs
     """
     # Set precision policy
     if use_mixed_precision:
@@ -135,8 +146,9 @@ def create_face_and_head_pose_model(
     # Create input layers
     face_input = Input(shape=input_shape, name='face_input')
     head_pose_input = Input(shape=(3,), name='head_pose_input')  # pitch, yaw, roll
+    metadata_input = Input(shape=(metadata_shape,), name='metadata_input')  # New metadata input
     
-    # Face branch using MobileNetV2
+    # Face branch using ResNet50
     face_model = ResNet50(
         weights='imagenet', 
         include_top=False, 
@@ -158,8 +170,14 @@ def create_face_and_head_pose_model(
     head_pose_features = Dense(128, activation='relu')(head_pose_features)
     head_pose_features = BatchNormalization()(head_pose_features)
     
+    # Process metadata
+    metadata_features = Dense(32, activation='relu')(metadata_input)
+    metadata_features = BatchNormalization()(metadata_features)
+    metadata_features = Dense(64, activation='relu')(metadata_features)
+    metadata_features = BatchNormalization()(metadata_features)
+    
     # Combine features
-    combined_features = Concatenate()([face_features, head_pose_features])
+    combined_features = Concatenate()([face_features, head_pose_features, metadata_features])
     
     # Enhanced fully connected layers with BatchNormalization
     x = Dense(512, activation='relu')(combined_features)
@@ -174,7 +192,7 @@ def create_face_and_head_pose_model(
     
     # Create model
     model = Model(
-        inputs=[face_input, head_pose_input],
+        inputs=[face_input, head_pose_input, metadata_input],
         outputs=outputs
     )
     
@@ -219,3 +237,4 @@ def get_training_callbacks(checkpoint_path: str) -> list:
         )
     ]
     return callbacks
+

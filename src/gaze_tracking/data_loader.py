@@ -312,3 +312,97 @@ class GazeDataLoader:
                             print(f"    JSON files: {metadata_candidates}")
         
         return available_datasets
+
+    def extract_head_pose(self, indices=None) -> np.ndarray:
+        """
+        Extract head pose data (pitch, yaw, roll) from metadata.
+        
+        Args:
+            indices: Optional indices to extract data for
+            
+        Returns:
+            np.ndarray with shape (N, 3) containing pitch, yaw, roll values
+        """
+        if not os.path.exists(self.metadata_path):
+            raise FileNotFoundError(f"Metadata file not found: {self.metadata_path}")
+        
+        with open(self.metadata_path, 'r') as file:
+            data = json.load(file)
+            
+        # Use specified indices or all data
+        if indices is not None:
+            samples = [data[i] for i in indices if i < len(data)]
+        else:
+            samples = data
+            
+        head_pose = []
+        for sample in samples:
+            # Default values
+            pitch, yaw, roll = 0.0, 0.0, 0.0
+            
+            # Try to extract from motion_data
+            if 'motion_data' in sample and isinstance(sample['motion_data'], dict):
+                motion = sample['motion_data']
+                if 'AttitudePitch' in motion and isinstance(motion['AttitudePitch'], (int, float)):
+                    pitch = float(motion['AttitudePitch'])
+                if 'AttitudeYaw' in motion and isinstance(motion['AttitudeYaw'], (int, float)):
+                    yaw = float(motion['AttitudeYaw'])
+                if 'AttitudeRoll' in motion and isinstance(motion['AttitudeRoll'], (int, float)):
+                    roll = float(motion['AttitudeRoll'])
+                    
+            head_pose.append([pitch, yaw, roll])
+            
+        return np.array(head_pose, dtype=np.float32)
+        
+    def extract_metadata_features(self, indices=None, feature_count=6) -> np.ndarray:
+        """
+        Extract metadata features useful for gaze prediction.
+        
+        Args:
+            indices: Optional indices to extract data for
+            feature_count: Number of features to extract
+            
+        Returns:
+            np.ndarray with shape (N, feature_count)
+        """
+        if not os.path.exists(self.metadata_path):
+            raise FileNotFoundError(f"Metadata file not found: {self.metadata_path}")
+        
+        with open(self.metadata_path, 'r') as file:
+            data = json.load(file)
+            
+        # Use specified indices or all data
+        if indices is not None:
+            samples = [data[i] for i in indices if i < len(data)]
+        else:
+            samples = data
+            
+        metadata = []
+        for sample in samples:
+            features = np.zeros(feature_count, dtype=np.float32)
+            
+            # Extract screen orientation and dimensions
+            if 'screen_data' in sample and isinstance(sample['screen_data'], dict):
+                screen = sample['screen_data']
+                if 'W' in screen and 'H' in screen:
+                    # Normalize dimensions
+                    features[0] = float(screen.get('W', 0)) / 1000.0
+                    features[1] = float(screen.get('H', 0)) / 1000.0
+                    # Aspect ratio
+                    if features[1] > 0:
+                        features[2] = features[0] / features[1]
+                # Screen orientation
+                if 'Orientation' in screen:
+                    features[3] = float(screen.get('Orientation', 1)) / 4.0
+            
+            # Face grid data for face position on screen
+            if 'face_grid_data' in sample and isinstance(sample['face_grid_data'], dict):
+                face_grid = sample['face_grid_data']
+                if all(k in face_grid for k in ['X', 'Y', 'W', 'H']):
+                    # Normalized position and size
+                    features[4] = float(face_grid.get('X', 0) + face_grid.get('W', 0)/2) / 25.0
+                    features[5] = float(face_grid.get('Y', 0) + face_grid.get('H', 0)/2) / 25.0
+            
+            metadata.append(features)
+            
+        return np.array(metadata, dtype=np.float32)

@@ -5,6 +5,7 @@ import numpy as np
 from core.face import FaceMeshDetector, FaceDetectionResult
 from core.eye import crop_eye_region
 from core.config import LEFT_EYE_IDX, RIGHT_EYE_IDX
+from utils.camera_utils import open_camera
 
 # Configure logging with both file and stream handlers.
 logging.basicConfig(
@@ -65,29 +66,11 @@ def run_eye_detection(camera_id: int = 0, resolution: tuple = (1280, 720),
     try:
         # Initialize face detector (for landmark extraction)
         with FaceMeshDetector() as detector:
-            # Initialize camera capture with retry logic
-            max_retries = 3
-            retries = 0
-            cap = None
-            while retries < max_retries:
-                cap = cv2.VideoCapture(camera_id)
-                if cap.isOpened():
-                    break
-                retries += 1
-                logger.warning(f"Failed to open camera (attempt {retries}/{max_retries}).")
-                time.sleep(1)
-            if not cap.isOpened():
-                logger.error(f"Error: Could not open camera (device ID: {camera_id}) after {max_retries} attempts.")
+            # Initialize camera capture using utility function
+            cap = open_camera(camera_id, resolution)
+            if cap is None:
+                logger.error(f"Error: Could not open camera (device ID: {camera_id}).")
                 return False
-
-            # Set camera properties
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
-            cap.set(cv2.CAP_PROP_FPS, 30)
-            cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)
-            actual_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            actual_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            logger.info(f"Camera initialized with actual resolution: {actual_width}x{actual_height}")
 
             # Display initial blank eye images
             cv2.imshow(left_eye_window, blank_eye)
@@ -98,12 +81,11 @@ def run_eye_detection(camera_id: int = 0, resolution: tuple = (1280, 720),
                 frame_start_time = time.time()
                 ret, frame = cap.read()
                 if not ret:
-                    logger.warning("Failed to capture frame from camera. Attempting to reconnect...")
+                    logger.warning("Failed to capture frame. Reopening camera...")
                     cap.release()
-                    time.sleep(1)
-                    cap = cv2.VideoCapture(camera_id)
-                    if not cap.isOpened():
-                        logger.error("Failed to reconnect to camera.")
+                    cap = open_camera(camera_id, resolution)
+                    if cap is None:
+                        logger.error("Failed to reopen camera.")
                         break
                     continue
 

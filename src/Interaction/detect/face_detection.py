@@ -8,6 +8,7 @@ from core.face import FaceMeshDetector, FaceDetectionResult
 from core.config import DEFAULT  # DEFAULT is your landmark configuration
 from utils.image_utils import draw_rectangle, draw_text
 from utils.logging_utils import configure_logging
+from utils.camera_utils import open_camera
 
 logger = configure_logging("face_detection.log")
 
@@ -32,24 +33,18 @@ def run_face_detection(camera_id: int = 0, resolution: Tuple[int, int] = (1280, 
     try:
         # Initialize the face detector with the default landmark configuration
         with FaceMeshDetector(landmark_config=DEFAULT) as detector:
-            cap = cv2.VideoCapture(camera_id)
-            if not cap.isOpened():
+            cap = open_camera(camera_id, resolution)
+            if cap is None:
                 logger.error(f"Error: Could not open the webcam (device ID: {camera_id}).")
                 return False
-
-            # Set camera properties for better performance
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
-            logger.info(f"Camera initialized with resolution {resolution}.")
 
             while True:
                 ret, frame = cap.read()
                 if not ret:
-                    logger.warning("Failed to capture frame from webcam. Attempting to reconnect...")
+                    logger.warning("Failed to capture frame. Reopening camera...")
                     cap.release()
-                    time.sleep(1)
-                    cap = cv2.VideoCapture(camera_id)
-                    if not cap.isOpened():
+                    cap = open_camera(camera_id, resolution)
+                    if cap is None:
                         logger.error("Failed to reconnect to camera.")
                         break
                     continue
