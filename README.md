@@ -17,9 +17,8 @@ This repository provides a comprehensive pipeline for gaze estimation and tracki
 11. [Visualization](#visualization)
 12. [Usage Examples](#usage-examples)
 13. [Troubleshooting](#troubleshooting)
-14. [Contributing](#contributing)
-15. [License](#license)
-16. [Contact](#contact)
+14. [License](#license)
+15. [Contact](#contact)
 
 ---
 
