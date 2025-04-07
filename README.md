@@ -106,7 +106,7 @@ Follow these steps to set up the environment:
 
 4. Verify installation:
    ```bash
-   python -c "import torch; print(f'PyTorch version: {torch.__version__}, CUDA available: {torch.cuda.is_available()}')"
+   python -c "import tensorflow as tf; print(f'TensorFlow version: {tf.__version__}, GPU available: {len(tf.config.list_physical_devices(\"GPU\")) > 0}')"
    ```
 
 ---
