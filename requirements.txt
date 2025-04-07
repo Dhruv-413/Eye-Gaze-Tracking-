@@ -6,5 +6,8 @@ tensorflow
 filterpy
 scikit-learn
 pandas
-tensorflow
 keras
+optuna
+mne
+matplotlib
+scipy
