@@ -1,13 +1,22 @@
-opencv-python
-numpy
-mediapipe
-pyautogui
-tensorflow
-filterpy
-scikit-learn
-pandas
-keras
-optuna
-mne
-matplotlib
-scipy
+# Core Data Processing
+numpy>=1.19.5
+scipy>=1.7.0
+pandas>=1.3.0
+
+# Computer Vision and Media Processing
+opencv-python>=4.5.3
+mediapipe>=0.8.9
+
+# Machine Learning and Deep Learning
+scikit-learn>=1.0.0
+tensorflow>=2.8.0
+keras>=2.8.0
+
+# Visualization
+matplotlib>=3.5.0
+
+# Automation and Control
+pyautogui>=0.9.53
+
+# Hyperparameter Optimization
+optuna>=2.10.0
