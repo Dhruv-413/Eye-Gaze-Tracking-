@@ -300,8 +300,6 @@ The project implements three main model architectures:
 
 ### Project Information
 - **Project Link:** [https://github.com/Dhruv-413/Eye-Gaze-Tracking-](https://github.com/Dhruv-413/Eye-Gaze-Tracking-)
-- **Issues and Feature Requests:** Please use the GitHub issue tracker to report bugs or request new features
-- **Documentation:** Additional documentation can be found in the code comments and docstrings
 
 ### Author
 - **Dhruv**: [GitHub Profile](https://github.com/Dhruv-413)
