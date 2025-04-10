@@ -1,0 +1,51 @@
+# Core Data Processing
+numpy>=1.19.5
+scipy>=1.7.0
+pandas>=1.3.0
+
+# Computer Vision and Media Processing
+opencv-python>=4.5.3
+mediapipe>=0.8.9
+imageio>=2.9.0  # For reading and writing images and videos
+imageio-ffmpeg>=0.4.5  # For video processing
+
+# Machine Learning and Deep Learning
+scikit-learn>=1.0.0
+tensorflow>=2.18.0
+keras>=2.8.0
+tensorflow-addons>=0.17.0  # For additional TensorFlow functionalities
+tensorflow-hub>=0.12.0  # For pre-trained models in TensorFlow
+tensorflow-io>=0.23.1  # For I/O operations in TensorFlow
+
+
+# CUDA Support
+# Note: CUDA must be installed separately:
+# - Download from NVIDIA: https://developer.nvidia.com/cuda-downloads
+# - For PyTorch with CUDA support: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# pycuda>=2021.1  # Requires CUDA Toolkit installed and configured properly
+numba>=0.54.0  # Provides CUDA support through numba.cuda if CUDA is available
+
+# Visualization
+matplotlib>=3.5.0
+seaborn>=0.11.2
+plotly>=5.1.0  # For interactive visualizations
+
+# Automation and Control
+pyautogui>=0.9.53
+pygetwindow>=0.0.9  # For window management
+pywinauto>=0.6.8  # For Windows GUI automation
+
+# Hyperparameter Optimization
+optuna>=2.10.0
+hyperopt>=0.2.7  # For hyperparameter tuning
+
+# Reinforcement Learning
+torch>=1.11.0  # PyTorch for RL
+torchvision>=0.12.0  # PyTorch Vision for RL 
+torchaudio>=0.11.0  # PyTorch Audio for RL
+gym>=0.21.0  # OpenAI Gym for RL
+stable-baselines3>=1.0.0  # RL library built on top of PyTorch
+ray[rllib]>=1.8.0  # Ray for distributed RL
+ray[tune]>=1.8.0  # Ray Tune for hyperparameter tuning in RL
+ray[serve]>=1.8.0  # Ray Serve for serving RL models
+

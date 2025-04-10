@@ -1,0 +1,8 @@
+dataset/
+output/
+research paper/
+**/__pycache__/
+*.py[cod]
+.venv/
+.vscode/
+split_data/
