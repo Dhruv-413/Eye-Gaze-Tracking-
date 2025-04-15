@@ -5,7 +5,7 @@ from tensorflow.keras.layers import ( # type: ignore
     Concatenate, GlobalAveragePooling2D
 )
 from tensorflow.keras.applications import ResNet50, EfficientNetB3 # type: ignore
-from tensorflow.keras.optimizers import Adam # type: ignore
+from tensorflow.keras.optimizers import AdamW # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint # type: ignore
 from typing import Tuple, Dict, Any, Optional
 
@@ -142,7 +142,7 @@ def create_hybrid_model(
         
         # Compile model with multiple outputs
         model.compile(
-            optimizer=Adam(learning_rate=learning_rate),
+            optimizer=AdamW(learning_rate=learning_rate),
             loss={
                 'gaze_output': 'mse',
                 'pose_output': 'mse'
@@ -164,7 +164,7 @@ def create_hybrid_model(
         
         # Compile model with single output
         model.compile(
-            optimizer=Adam(learning_rate=learning_rate),
+            optimizer=AdamW(learning_rate=learning_rate),
             loss='mse',
             metrics=['mae', 'mse']
         )
@@ -184,7 +184,7 @@ def get_hybrid_model_callbacks(checkpoint_path: str) -> list:
     callbacks = [
         EarlyStopping(
             monitor='val_loss',
-            patience=15,  # More patience for complex model
+            patience=40,  # More patience for complex model
             restore_best_weights=True,
             verbose=1
         ),
