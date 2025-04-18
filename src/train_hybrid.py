@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 def train_hybrid_model(
     data_dir,
-    output_dir,
+    trained_model,
     batch_size=32,
     epochs=50,
     learning_rate=0.0005,
@@ -25,7 +25,7 @@ def train_hybrid_model(
     
     Args:
         data_dir: Directory containing the dataset
-        output_dir: Directory to save trained model and logs
+        trained_model: Directory to save trained model and logs
         batch_size: Batch size for training
         epochs: Number of epochs to train
         learning_rate: Learning rate for optimizer
@@ -36,14 +36,14 @@ def train_hybrid_model(
         val_split: Fraction of data to use for validation
     """
     # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(trained_model, exist_ok=True)
     
     # Create model checkpoint path
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    checkpoint_path = os.path.join(output_dir, f"hybrid_model_{timestamp}.h5")
+    checkpoint_path = os.path.join(trained_model, f"hybrid_model_{timestamp}.h5")
     
     # Create TensorBoard log directory
-    log_dir = os.path.join(output_dir, "logs", timestamp)
+    log_dir = os.path.join(trained_model, "logs", timestamp)
     os.makedirs(log_dir, exist_ok=True)
     
     # Initialize dataset
@@ -61,8 +61,8 @@ def train_hybrid_model(
     metadata_features = len(train_data[0]['metadata']) if train_data else 10
     
     # Create data generators
-    train_generator = dataset.data_generator(train_data, batch_size=batch_size)
-    val_generator = dataset.data_generator(val_data, batch_size=batch_size)
+    train_generator = dataset.data_generator(train_data, batch_size=batch_size, include_pose=include_pose_estimation)
+    val_generator = dataset.data_generator(val_data, batch_size=batch_size, include_pose=include_pose_estimation)
     
     # Calculate steps per epoch
     train_steps = len(train_data) // batch_size
@@ -94,30 +94,16 @@ def train_hybrid_model(
     
     # Train the model
     print(f"Starting training for {epochs} epochs...")
-    if include_pose_estimation:
+    # if include_pose_estimation:
         # When using pose estimation, the generator needs to provide pose data
         # This is a placeholder - you'd need to modify your data generator
         # to provide the necessary pose information
-        print("WARNING: Using pose estimation, but the dataset might not provide pose data")
-        print("         Ensure your data generator provides pose targets")
         
         # Placeholder for pose data training
         # In a real implementation, your generator would yield a tuple:
         # ((inputs), {'gaze_output': gaze_targets, 'pose_output': pose_targets})
         
         # For now, let's simply train without the pose estimation
-        print("Training without pose estimation for this example")
-        include_pose_estimation = False
-        
-        # Re-create the model without pose estimation
-        model = create_hybrid_model(
-            input_shape=(image_size, image_size, 3),
-            metadata_shape=metadata_features,
-            learning_rate=learning_rate,
-            use_mixed_precision=use_mixed_precision,
-            include_pose_estimation=False,  # Changed to False
-            fusion_method=fusion_method
-        )
     
     history = model.fit(
         train_generator,
@@ -130,12 +116,12 @@ def train_hybrid_model(
     )
     
     # Save the final model
-    final_model_path = os.path.join(output_dir, f"hybrid_model_final_{timestamp}.h5")
+    final_model_path = os.path.join(trained_model, f"hybrid_model_final_{timestamp}.h5")
     model.save(final_model_path)
     print(f"Model training complete. Final model saved to {final_model_path}")
     
     # Plot training history
-    plot_history(history, os.path.join(output_dir, f"hybrid_training_history_{timestamp}.png"))
+    plot_history(history, os.path.join(trained_model, f"hybrid_training_history_{timestamp}.png"))
 
 def plot_history(history, save_path):
     """Plot and save the training history"""
@@ -166,7 +152,7 @@ def plot_history(history, save_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train hybrid model for eye gaze estimation")
     parser.add_argument("--data_dir", type=str, required=True, help="Directory containing the dataset")
-    parser.add_argument("--output_dir", type=str, default="./output/hybrid_model", help="Output directory")
+    parser.add_argument("--trained_model", type=str, default="./output/hybrid_model", help="Output directory")
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size")
     parser.add_argument("--epochs", type=int, default=50, help="Number of epochs")
     parser.add_argument("--lr", type=float, default=0.0005, help="Learning rate")
@@ -181,7 +167,7 @@ if __name__ == "__main__":
     
     train_hybrid_model(
         data_dir=args.data_dir,
-        output_dir=args.output_dir,
+        trained_model=args.trained_model,
         batch_size=args.batch_size,
         epochs=args.epochs,
         learning_rate=args.lr,

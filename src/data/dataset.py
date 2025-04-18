@@ -5,6 +5,7 @@ import tensorflow as tf
 from tensorflow.keras.preprocessing.image import load_img, img_to_array  #type: ignore[import]
 import cv2
 import glob
+import logging
 
 class GazeDataset:
     def __init__(self, root_dir, img_size=(224, 224), validation_split=0.2):
@@ -22,17 +23,17 @@ class GazeDataset:
         self.metadata_folders = self._get_metadata_folders()
         
     def _get_metadata_folders(self):
-        """Find all folders with processed_metadata.json files"""
+        """Find all folders with metadata.json files"""
         folders = []
         for folder in glob.glob(os.path.join(self.root_dir, "output", "*")):
-            metadata_path = os.path.join(folder, "processed_metadata.json")
+            metadata_path = os.path.join(folder, "metadata.json")
             if os.path.exists(metadata_path):
                 folders.append(folder)
         return folders
         
     def load_metadata(self, folder):
         """Load metadata from a specific folder"""
-        metadata_path = os.path.join(folder, "processed_metadata.json")
+        metadata_path = os.path.join(folder, "metadata.json")
         with open(metadata_path, 'r') as f:
             metadata = json.load(f)
         return metadata
@@ -103,6 +104,18 @@ class GazeDataset:
                 features.append(0.0)
         else:
             features.extend([0.0, 0.0])
+        
+        # Add head pose data if available
+        if "head_pose" in metadata_entry and isinstance(metadata_entry["head_pose"], dict):
+            features.append(metadata_entry["head_pose"].get("pitch", 0.0))
+            features.append(metadata_entry["head_pose"].get("yaw", 0.0))
+            features.append(metadata_entry["head_pose"].get("roll", 0.0))
+            features.append(metadata_entry["head_pose"].get("eye_distance", 0.0) / 200.0)  # Normalize
+        
+        # Add eyes midpoint data if available
+        if "eyes_midpoint" in metadata_entry and isinstance(metadata_entry["eyes_midpoint"], dict):
+            features.append(metadata_entry["eyes_midpoint"].get("normalized_X", 0.5))
+            features.append(metadata_entry["eyes_midpoint"].get("normalized_Y", 0.5))
             
         return np.array(features, dtype=np.float32)
     
@@ -110,7 +123,9 @@ class GazeDataset:
         """Create TensorFlow datasets for training and validation"""
         data = []
         
+        logging.info(f"Loading data from {len(self.metadata_folders)} folders")
         for folder in self.metadata_folders:
+            logging.info(f"Processing {folder}")
             metadata = self.load_metadata(folder)
             
             for entry in metadata:
@@ -119,15 +134,17 @@ class GazeDataset:
                     continue
                     
                 if entry["left_eye_image"] is None or entry["right_eye_image"] is None:
-                    continue
+                    left_eye_path = os.path.join(self.root_dir, "placeholder_left_eye.jpg")
+                    right_eye_path = os.path.join(self.root_dir, "placeholder_right_eye.jpg")
+                else:
+                    left_eye_path = os.path.join(self.root_dir, entry["left_eye_image"])
+                    right_eye_path = os.path.join(self.root_dir, entry["right_eye_image"])
                     
                 if "normalized_X" not in entry["dot_data"] or "normalized_Y" not in entry["dot_data"]:
                     continue
                 
                 # Get absolute paths for images
                 face_path = os.path.join(self.root_dir, entry["face_image"])
-                left_eye_path = os.path.join(self.root_dir, entry["left_eye_image"])
-                right_eye_path = os.path.join(self.root_dir, entry["right_eye_image"])
                 
                 # Extract target gaze coordinates (normalized)
                 gaze_target = np.array([
@@ -138,12 +155,20 @@ class GazeDataset:
                 # Extract metadata features
                 metadata_features = self.extract_metadata_features(entry)
                 
+                # Fix the head pose access
+                head_pose_data = entry.get('head_pose') or {}  # Use empty dict if None or doesn't exist
+                
                 data.append({
                     'face_path': face_path,
-                    'left_eye_path': left_eye_path,
+                    'left_eye_path': left_eye_path, 
                     'right_eye_path': right_eye_path,
                     'metadata': metadata_features,
-                    'gaze_target': gaze_target
+                    'gaze_target': gaze_target,
+                    'head_pose': {
+                        'pitch': head_pose_data.get('pitch', 0.0),
+                        'yaw': head_pose_data.get('yaw', 0.0),
+                        'roll': head_pose_data.get('roll', 0.0)
+                    }
                 })
         
         # Shuffle and split the data
@@ -156,8 +181,8 @@ class GazeDataset:
         
         return train_data, val_data
     
-    def data_generator(self, data, batch_size=32):
-        """Generator function to yield batches of data"""
+    def data_generator(self, data, batch_size=32, include_pose=False):
+        """Generator function to yield batches of data with optional pose estimation"""
         num_samples = len(data)
         indices = np.arange(num_samples)
         
@@ -171,8 +196,10 @@ class GazeDataset:
                 batch_left_eyes = np.zeros((len(batch_indices), *self.img_size, 3))
                 batch_right_eyes = np.zeros((len(batch_indices), *self.img_size, 3))
                 batch_faces = np.zeros((len(batch_indices), *self.img_size, 3))
-                batch_metadata = np.zeros((len(batch_indices), len(data[0]['metadata'])))
-                batch_targets = np.zeros((len(batch_indices), 2))
+                metadata_size = 15  # Model expects 15 features
+                batch_metadata = np.zeros((len(batch_indices), metadata_size))
+                batch_gaze_targets = np.zeros((len(batch_indices), 2))
+                batch_pose_targets = np.zeros((len(batch_indices), 3))  # pitch, yaw, roll
                 
                 # Fill the batch
                 for i, idx in enumerate(batch_indices):
@@ -183,17 +210,32 @@ class GazeDataset:
                     batch_right_eyes[i] = self.preprocess_image(sample['right_eye_path'])
                     batch_faces[i] = self.preprocess_image(sample['face_path'])
                     
-                    # Add metadata and target
-                    batch_metadata[i] = sample['metadata']
-                    batch_targets[i] = sample['gaze_target']
+                    # Pad metadata with zeros to match expected size
+                    actual_metadata = sample['metadata']
+                    batch_metadata[i, :len(actual_metadata)] = actual_metadata
+                    
+                    batch_gaze_targets[i] = sample['gaze_target']
+                    
+                    # Add pose targets if available
+                    if 'head_pose' in sample and include_pose:
+                        batch_pose_targets[i] = [
+                            sample['head_pose'].get('pitch', 0.0),
+                            sample['head_pose'].get('yaw', 0.0),
+                            sample['head_pose'].get('roll', 0.0)
+                        ]
                 
-                # Yield the batch
-                yield (
-                    {
-                        'left_eye_input': batch_left_eyes,
-                        'right_eye_input': batch_right_eyes,
-                        'face_input': batch_faces,
-                        'metadata_input': batch_metadata
-                    },
-                    batch_targets
-                )
+                # Yield inputs and targets based on whether pose is included
+                inputs = {
+                    'left_eye_input': batch_left_eyes,
+                    'right_eye_input': batch_right_eyes,
+                    'face_input': batch_faces,
+                    'metadata_input': batch_metadata
+                }
+                
+                if include_pose:
+                    yield (inputs, {
+                        'gaze_output': batch_gaze_targets,
+                        'pose_output': batch_pose_targets
+                    })
+                else:
+                    yield (inputs, batch_gaze_targets)
