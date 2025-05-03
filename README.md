@@ -12,11 +12,12 @@ This repository provides a comprehensive pipeline for eye gaze estimation and tr
 6. [Dataset Preparation](#dataset-preparation)
 7. [Data Processing](#data-processing)
 8. [Model Training](#model-training)
-9. [Evaluation](#evaluation)
-10. [Real-time Prediction](#real-time-prediction)
-11. [Troubleshooting](#troubleshooting)
-12. [Contact](#contact)
-13. [Detailed Command-Line Options](#detailed-command-line-options)
+9. [Real-time Cursor Control](#real-time-cursor-control)
+10. [Troubleshooting](#troubleshooting)
+11. [Model Architectures](#model-architectures)
+12. [Future Work](#future-work)
+13. [Contact](#contact)
+14. [Detailed Command-Line Options](#detailed-command-line-options)
 
 ---
 
@@ -37,6 +38,7 @@ This project provides an end-to-end solution for gaze-based interaction. By leve
 - **Real-time capabilities**: Face and eye detection using MediaPipe
 - **Evaluation tools**: Angular error calculation, visualization of predictions
 - **Optimization techniques**: Mixed precision training, early stopping, and learning rate scheduling
+- **Real-time cursor control**: Automatic cursor movement based on eye gaze direction
 
 ---
 
@@ -47,31 +49,28 @@ eye_gaze/
 │   ├── utils/                    # Utility functions
 │   │   ├── mediapipe_utils.py    # Face and eye detection using MediaPipe
 │   │   ├── camera_utils.py       # Camera handling utilities
+│   │   ├── metadata_utils.py     # Metadata generation and processing
+│   │   ├── gaze_processing.py    # Gaze direction processing utilities
+│   │   ├── calibration_utils.py  # Calibration utilities for gaze tracking
 │   ├── pre_processing/           # Data preprocessing pipeline
 │   │   ├── extraction.py         # For extracting images and annotations
 │   │   ├── process_metadata.py   # Processing metadata
-│   │   ├── data_splitter.py      # Splitting data into train/test sets
 │   ├── model/                    # Model definitions
-│   │   ├── resnet50.py           # ResNet50-based eye gaze model
-│   │   ├── gazenet.py            # GazeNet model using EfficientNetB3
 │   │   ├── hybrid_model.py       # Hybrid model combining approaches
 │   ├── data/                     # Dataset handling
 │   │   ├── dataset.py            # Dataset class for loading and preprocessing
-│   ├── test/                     # Testing and evaluation scripts
-│   │   ├── predict.py            # For making predictions with trained models
-│   │   ├── evaluate.py           # For evaluating model performance
-│   ├── train_resnet.py           # Training script for ResNet model
-│   ├── train_gazenet.py          # Training script for GazeNet model
 │   ├── train_hybrid.py           # Training script for Hybrid model
 │   ├── model_compare.py          # For comparing different model architectures
 │   ├── preprocess_main.py        # Main script for preprocessing pipeline
+│   ├── main.py                   # Main application script for gaze tracking
+│   ├── main2.py                  # Simplified real-time gaze to cursor control
 ├── requirements.txt              # Project dependencies
 ├── README.md                     # This file
 ```
 ---
 
 ## Prerequisites
-- Python 3.7 or higher
+- Python 3.9 or 3.10
 - TensorFlow 2.x
 - OpenCV
 - MediaPipe
@@ -82,7 +81,7 @@ eye_gaze/
 ## Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/Dhruv-413/Eye-Gaze-Tracking-.gitt
+   git clone https://github.com/Dhruv-413/Eye-Gaze-Tracking-
    ```
 2. Create a virtual environment and activate it:
    ```bash
@@ -107,101 +106,37 @@ eye_gaze/
 ---
 
 ## Data Processing
-1. Process the metadata:
+1. Process the images and metadata:
    ```bash
-   python src/pre_processing/process_metadata.py
+   python src/preprocess_main.py
    ```
-2. Split the data into training and testing sets:
-   ```bash
-   python src/pre_processing/data_splitter.py
-   ```
-
 ---
 
 ## Model Training
-1. Train the ResNet model:
-   ```bash
-   python src/train_resnet.py
-   ```
-2. Train the GazeNet model:
-   ```bash
-   python src/train_gazenet.py
-   ```
-3. Train the Hybrid model:
+1. Train the Hybrid model:
    ```bash
    python src/train_hybrid.py
    ```
 
 ---
 
-## Evaluation
-1. Evaluate the trained models:
-   ```bash
-   python src/test/evaluate.py
-   ```
-2. Compare different model architectures:
-   ```bash
-   python src/model_compare.py
-   ```
+## Real-time Cursor Control
 
----
-
-## Real-time Prediction
-The project provides tools to make predictions with trained models on new images or in real-time applications.
-
-### Single Image Prediction
-To make predictions on individual images:
+The project includes a simplified script (`main2.py`) for real-time gaze-based cursor control:
 
 ```bash
-python src/test/predict.py --model_path path/to/trained_model.h5 \
-                          --left_eye path/to/left_eye.jpg \
-                          --right_eye path/to/right_eye.jpg \
-                          --face path/to/face.jpg \
-                          --output prediction_result.jpg
+python src/main2.py --model_path path/to/your/model.h5 --cam_index 0
 ```
 
 #### Parameters:
-- `--model_path`: Path to the trained model (.h5 file)
-- `--left_eye`: Path to the left eye image
-- `--right_eye`: Path to the right eye image
-- `--face`: Path to the face image
-- `--metadata`: (Optional) Path to a JSON file with metadata
-- `--output`: Path to save the visualization (default: gaze_prediction.jpg)
-- `--img_size`: Size of input images (default: 224)
+- `--model_path`: Path to the trained model (.h5 file) (required)
+- `--cam_index`: Webcam index to use (default: 0)
 
-### Integration with Your Applications
-The modules in `utils/mediapipe_utils.py` and `utils/camera_utils.py` provide functionality that you can integrate into your own applications:
-
-1. **Face and Eye Detection**: The `FaceMeshDetector` class in `mediapipe_utils.py` can detect facial landmarks and extract eye regions.
-2. **Camera Handling**: The `CameraCapture` class in `camera_utils.py` provides an easy interface for webcam access.
-
-Example integration:
-```python
-from utils.mediapipe_utils import FaceMeshDetector
-from utils.camera_utils import CameraCapture
-import cv2
-
-# Initialize the camera and face detector
-with CameraCapture(camera_id=0) as camera:
-    with FaceMeshDetector() as detector:
-        while True:
-            # Get frame from camera
-            ret, frame = camera.read()
-            if not ret:
-                break
-                
-            # Process frame to find faces and eyes
-            results = detector.process_frame(frame)
-            left_eye_data, right_eye_data = detector.extract_eye_data(results, frame.shape)
-            
-            # Draw landmarks for visualization
-            frame_with_landmarks = detector.draw_landmarks(frame, results)
-            
-            # Display the result
-            cv2.imshow("Eye Tracking", frame_with_landmarks)
-            if cv2.waitKey(1) & 0xFF == 27:  # ESC key
-                break
-```
+This script:
+1. Captures webcam input
+2. Detects face and eye landmarks using MediaPipe
+3. Processes the detected features with your trained model
+4. Moves the mouse cursor based on the predicted gaze direction
 
 ---
 
@@ -259,27 +194,17 @@ with CameraCapture(camera_id=0) as camera:
    - Improve lighting conditions
    - Adjust minimum detection confidence: `min_detection_confidence=0.6`
    - For glasses, try `refine_landmarks=True` in FaceMeshDetector
+   
+3. **Cursor Control Issues**:
+   - Run calibration process before prediction
+   - Adjust sensitivity parameters if cursor moves too fast/slow
+   - Ensure stable lighting conditions for consistent detection
 
 ---
 
 ## Model Architectures
 
-The project implements three main model architectures:
-
-1. **ResNet50-based Model** (`src/model/resnet50.py`)
-   - Base model: ResNet50 pre-trained on ImageNet
-   - Multiple inputs: face image, left eye, right eye, and metadata
-   - Feature fusion: concatenation of features from all inputs
-   - Output: 2D gaze coordinates (x, y)
-   - Strengths: Good accuracy, robust to various face orientations
-
-2. **GazeNet Model** (`src/model/gazenet.py`)
-   - Base model: EfficientNetB3 pre-trained on ImageNet
-   - Multi-task learning: gaze estimation and pose estimation
-   - Enhanced feature extraction for eye regions
-   - Strengths: More efficient, better for mobile applications
-
-3. **Hybrid Model** (`src/model/hybrid_model.py`)
+1. **Hybrid Model** (`src/model/hybrid_model.py`)
    - Combines ResNet50 and EfficientNetB3 architectures
    - Two fusion methods: feature-level and decision-level
    - Integrates face, eye, and metadata features
@@ -319,11 +244,9 @@ python src/preprocess_main.py [options]
 **Options:**
 - `--raw_data_dir <path>`: Directory containing raw data (default: "dataset")
 - `--processed_dir <path>`: Directory to save processed data (default: "output")
-- `--split_dir <path>`: Directory to save train/test split data (default: "output/split_data")
 - `--test_size <float>`: Proportion of data to use for testing (default: 0.3)
 - `--skip_extraction`: Skip image extraction step
 - `--skip_metadata_processing`: Skip metadata processing step
-- `--skip_splitting`: Skip train/test splitting step
 
 #### Image Extraction (`extraction.py`)
 ```bash
@@ -342,46 +265,8 @@ python src/pre_processing/process_metadata.py [options]
 **Options:**
 - `--output_dir <path>`: Directory containing processed data (default: "output")
 
-#### Data Splitting (`data_splitter.py`)
-```bash
-python src/pre_processing/data_splitter.py [options]
-```
-
-**Options:**
-- `--input_directory <path>`: Directory with processed data (default: "output")
-- `--output_directory <path>`: Directory to save split data (default: "split_data")
-- `--test_split <float>`: Test split ratio (default: 0.3)
 
 ### Model Training
-
-#### ResNet50 Training (`train_resnet.py`)
-```bash
-python src/train_resnet.py [options]
-```
-
-**Options:**
-- `--data_dir <path>`: Root directory containing the dataset (default: ".")
-- `--output_dir <path>`: Directory to save models and results (default: "./trained_models")
-- `--batch_size <int>`: Batch size for training (default: 32)
-- `--epochs <int>`: Number of epochs to train for (default: 50)
-- `--img_size <int>`: Size of input images (square) (default: 224)
-- `--val_split <float>`: Fraction of data to use for validation (default: 0.2)
-
-#### GazeNet Training (`train_gazenet.py`)
-```bash
-python src/train_gazenet.py [options]
-```
-
-**Options:**
-- `--train <path>`: Path to training data (required)
-- `--val <path>`: Path to validation data (required)
-- `--output <path>`: Output directory (default: "./output")
-- `--batch-size <int>`: Batch size (default: 32)
-- `--epochs <int>`: Number of epochs (default: 50)
-- `--lr <float>`: Learning rate (default: 0.0005)
-- `--image-size <int>`: Input image size (default: 224)
-- `--mixed-precision`: Use mixed precision training
-- `--no-pose`: Disable pose estimation
 
 #### Hybrid Model Training (`train_hybrid.py`)
 ```bash
@@ -400,49 +285,31 @@ python src/train_hybrid.py [options]
 - `--fusion <method>`: Feature fusion method (choices: "feature", "decision") (default: "feature")
 - `--val_split <float>`: Validation split ratio (default: 0.2)
 
-### Evaluation and Prediction
+### Main Application
 
-#### Model Evaluation (`evaluate.py`)
+#### Gaze Tracking Application (`main.py`)
 ```bash
-python src/test/evaluate.py [options]
+python src/main.py [options]
 ```
 
 **Options:**
 - `--model_path <path>`: Path to the trained model (.h5 file) (required)
-- `--data_dir <path>`: Root directory containing the dataset (default: ".")
-- `--output_dir <path>`: Directory to save evaluation results (default: "./evaluation_results")
-- `--batch_size <int>`: Batch size for evaluation (default: 32)
-- `--img_size <int>`: Size of input images (square) (default: 224)
-- `--val_split <float>`: Fraction of data to use for validation (default: 0.2)
+- `--camera_id <int>`: Camera device ID (default: 0)
+- `--width <int>`: Camera capture width (default: 640)
+- `--height <int>`: Camera capture height (default: 480)
+- `--display_landmarks`: Display facial landmarks on frame
+- `--fullscreen`: Run in fullscreen mode
+- `--record`: Record the session
+- `--output_dir <path>`: Directory to save recordings (default: "./recordings")
 
-#### Model Prediction (`predict.py`)
+#### Real-time Cursor Control (`main2.py`)
 ```bash
-python src/test/predict.py [options]
+python src/main2.py [options]
 ```
 
 **Options:**
 - `--model_path <path>`: Path to the trained model (.h5 file) (required)
-- `--left_eye <path>`: Path to the left eye image (required)
-- `--right_eye <path>`: Path to the right eye image (required)
-- `--face <path>`: Path to the face image (required)
-- `--metadata <path>`: Path to JSON file with metadata (optional)
-- `--output <path>`: Path to save the visualization (default: "gaze_prediction.jpg")
-- `--img_size <int>`: Size of input images (default: 224)
-
-#### Model Comparison (`model_compare.py`)
-```bash
-python src/model_compare.py [options]
-```
-
-**Options:**
-- `--resnet_model <path>`: Path to trained ResNet50 model (.h5 file)
-- `--efficientnet_model <path>`: Path to trained EfficientNet model (.h5 file)
-- `--hybrid_model <path>`: Path to trained Hybrid model (.h5 file)
-- `--data_dir <path>`: Root directory containing the dataset (default: ".")
-- `--output_dir <path>`: Directory to save comparison results (default: "./model_comparison")
-- `--batch_size <int>`: Batch size for evaluation (default: 32)
-- `--img_size <int>`: Size of input images (square) (default: 224)
-- `--val_split <float>`: Fraction of data to use for validation (default: 0.2)
+- `--cam_index <int>`: Webcam index (default: 0)
 
 ### MediaPipe Face Mesh Detector Options
 
