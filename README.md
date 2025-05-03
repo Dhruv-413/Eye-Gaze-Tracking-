@@ -60,7 +60,6 @@ eye_gaze/
 │   ├── data/                     # Dataset handling
 │   │   ├── dataset.py            # Dataset class for loading and preprocessing
 │   ├── train_hybrid.py           # Training script for Hybrid model
-│   ├── model_compare.py          # For comparing different model architectures
 │   ├── preprocess_main.py        # Main script for preprocessing pipeline
 │   ├── main.py                   # Main application script for gaze tracking
 │   ├── main2.py                  # Simplified real-time gaze to cursor control
