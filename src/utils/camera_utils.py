@@ -3,7 +3,7 @@ import numpy as np
 import time
 
 class CameraCapture:
-    def __init__(self, camera_id=0, width=640, height=480, fps=30):
+    def __init__(self, camera_id=0, width=640, height=480, fps=30, max_retries=3):
         """
         Initialize camera capture with specified parameters
         
@@ -12,45 +12,120 @@ class CameraCapture:
             width: Capture width in pixels
             height: Capture height in pixels
             fps: Target frames per second
+            max_retries: Maximum number of retries for camera access
         """
         self.camera_id = camera_id
         self.width = width
         self.height = height
         self.fps = fps
+        self.max_retries = max_retries
         self.cap = None
         self.frame_count = 0
         self.start_time = 0
         self.actual_fps = 0
+        self.last_frame = None  # Store last successful frame
+        self.retry_count = 0
 
     def start(self):
-        """Start camera capture"""
-        self.cap = cv2.VideoCapture(self.camera_id)
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Failed to open camera with ID {self.camera_id}")
-            
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+        """Start camera capture with retries"""
+        for attempt in range(self.max_retries):
+            try:
+                self.cap = cv2.VideoCapture(self.camera_id, cv2.CAP_DSHOW)  # Use DirectShow on Windows
+                
+                if not self.cap.isOpened():
+                    print(f"Failed to open camera on attempt {attempt+1}/{self.max_retries}")
+                    time.sleep(1)  # Wait before retry
+                    continue
+                    
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+                
+                # Check if camera is working by reading a test frame
+                ret, test_frame = self.cap.read()
+                if not ret or test_frame is None:
+                    print(f"Camera opened but read failed on attempt {attempt+1}/{self.max_retries}")
+                    self.cap.release()
+                    self.cap = None
+                    time.sleep(1)  # Wait before retry
+                    continue
+                
+                self.last_frame = test_frame  # Store first frame
+                self.frame_count = 0
+                self.start_time = time.time()
+                self.retry_count = 0  # Reset retry counter on success
+                print(f"Camera started successfully: {self.width}x{self.height} @{self.fps}fps")
+                return self
+                
+            except Exception as e:
+                print(f"Error starting camera (attempt {attempt+1}/{self.max_retries}): {e}")
+                if self.cap:
+                    self.cap.release()
+                    self.cap = None
+                time.sleep(1)  # Wait before retry
         
-        # Reset metrics
-        self.frame_count = 0
-        self.start_time = time.time()
-        return self
+        # If all retries fail, raise exception
+        raise RuntimeError(f"Failed to start camera after {self.max_retries} attempts")
 
     def read(self):
-        """Read a frame from the camera"""
+        """Read a frame from the camera with error recovery"""
         if self.cap is None:
-            raise RuntimeError("Camera not started. Call start() first.")
+            # Try to restart if camera is unexpectedly closed
+            if self.retry_count < self.max_retries:
+                self.retry_count += 1
+                print(f"Camera not available, attempting restart ({self.retry_count}/{self.max_retries})")
+                try:
+                    self.start()
+                    return self.read()  # Try reading after restart
+                except:
+                    pass
             
-        ret, frame = self.cap.read()
-        if ret:
-            self.frame_count += 1
-            elapsed_time = time.time() - self.start_time
-            if elapsed_time > 1.0:  # Update FPS calculation every second
-                self.actual_fps = self.frame_count / elapsed_time
-        
-        return ret, frame
-
+            # Return the last known good frame if restart fails
+            if self.last_frame is not None:
+                print("Using last known frame")
+                return True, self.last_frame.copy()
+            return False, None
+            
+        # Normal operation
+        try:
+            ret, frame = self.cap.read()
+            
+            if ret:
+                self.last_frame = frame.copy()  # Save successful frame
+                self.frame_count += 1
+                self.retry_count = 0  # Reset retry counter on success
+                
+                # Calculate FPS every second
+                elapsed_time = time.time() - self.start_time
+                if elapsed_time > 1.0:
+                    self.actual_fps = self.frame_count / elapsed_time
+                    if self.frame_count > 100:  # Reset occasionally to keep measurements current
+                        self.frame_count = 0
+                        self.start_time = time.time()
+            else:
+                # Handle failed read
+                if self.retry_count < self.max_retries:
+                    self.retry_count += 1
+                    print(f"Frame read failed, retrying ({self.retry_count}/{self.max_retries})")
+                    time.sleep(0.1)
+                    # Return last known good frame
+                    if self.last_frame is not None:
+                        return True, self.last_frame.copy()
+                else:
+                    print("Maximum read retries reached, restarting camera")
+                    self.release()
+                    self.start()
+                    self.retry_count = 0
+            
+            return ret, frame
+            
+        except Exception as e:
+            print(f"Error reading from camera: {e}")
+            # Return last known good frame on error
+            if self.last_frame is not None:
+                return True, self.last_frame.copy()
+            return False, None
+    
     def get_fps(self):
         """Return the actual FPS being achieved"""
         return self.actual_fps
