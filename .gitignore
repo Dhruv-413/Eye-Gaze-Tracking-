@@ -1,6 +1,9 @@
-gazecapture.part/
+dataset/
 output/
+research paper/
+gazecapture.part/
 **/__pycache__/
 *.py[cod]
 .venv/
 .vscode/
+split_data/
